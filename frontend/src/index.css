@@ -1,0 +1,41 @@
+@import "tailwindcss";
+
+@theme {
+  --color-sand-50: #fbf7f1;
+  --color-sand-100: #f5efe3;
+  --color-sage-100: #dfe7df;
+  --color-sage-300: #8ca49b;
+  --color-mist-100: #e7edf0;
+  --color-clay-100: #e8dccb;
+  --color-stone-650: #6f655c;
+}
+
+:root {
+  font-family: "Avenir Next", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  color: #6f655c;
+  background: #f7f1e8;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  min-height: 100%;
+}
+
+body {
+  min-height: 100vh;
+}
+
+button,
+textarea {
+  font: inherit;
+}
