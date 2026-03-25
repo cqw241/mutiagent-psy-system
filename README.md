@@ -20,6 +20,7 @@
 - **启发式情绪推断**: 规则化声学线索映射（如“低能量+平缓F0+大量停顿=低落线索”）。
 - **LLM 语义判读**: 可选通过大模型对“声学特征字典”做快速的客观情绪观察。
 - **并行深度 SER 增强**: 新增可选的 `emotion2vec_plus_large` 本地推理服务，结果以 `voice_signals["emotion2vec_reading"]` 独立字段并行写入，不替代现有 acoustic / MFCC / heuristic / LLM 链路。
+- **状态可观测**: 前端 `TracePanel` 现可直接查看 emotion2vec 当前状态、标签、置信度、模型目录和错误信息，便于联调与排障。
 - **强制可降级**: 当 `emotion2vec` 关闭、模型目录缺失、依赖不完整或推理失败时，节点会返回 `disabled` / `unavailable` / `error` 状态并自动回退到旧逻辑，不会破坏既有语音分析结果。
 
 ### 3. 会话记忆与 RAG
@@ -32,12 +33,12 @@
 - 支持 RESTful (`/chat`) 及 WebSocket 流式接口 (`/ws/chat/{session_id}`, `/ws/voice-chat/{session_id}`)。
 - 高风险会话不再通过冰冷模板提示，改为 `referral_agent` 输出极具同理心的温暖过渡语，并组装热线求助卡片。
 - 对辅导员/后台的异步 Webhook 高风险脱敏告警。
-- 发送给前端的 `trace` 包含解释性字段、校准基数、各 Agent 的内部判断。
+- 发送给前端的 `trace` 包含解释性字段、校准基数、各 Agent 的内部判断，以及 emotion2vec 的显式状态摘要。
 
 ### 5. 健壮的工程设施
 - 所有重复状态访问和组装提取到 `app/utils/state_helpers.py`（符合 DRY 原则）。
 - 为高并发场景添加了 LangGraph 的安全并发写策略（自定义 `merge_dicts` reducer 解决 `agent_judgments` 写入竞争）。
-- **自动化测试保障**：100 个 pytest 自动化测试通过，覆盖路由器规则、各个独立 Node 回退链路、emotion2vec service 降级路径、物理/MFCC 音频特征提取及整个 Graph 整合运行。
+- **自动化测试保障**：102 个 pytest 自动化测试通过，覆盖路由器规则、各个独立 Node 回退链路、emotion2vec service 降级路径、WebSocket trace 暴露、物理/MFCC 音频特征提取及整个 Graph 整合运行。
 
 ---
 
@@ -74,7 +75,7 @@ pip install -r requirements.txt
 - `ENABLE_RAG` (设为 `false` 可在无 RAG 时本地测试纯 Agent 流转)
 - `CHECKPOINT_BACKEND` (`memory` / `file`，更高阶的 `postgres` / `redis` 预留给外部 saver 扩展)
 - `CHECKPOINT_DIR` (当 `CHECKPOINT_BACKEND=file` 时生效)
-- `ENABLE_EMOTION2VEC` (设为 `true` 后启用本地 emotion2vec 辅助语音信号)
+- `ENABLE_EMOTION2VEC` (默认 `true`；设为 `false` 可关闭本地 emotion2vec 辅助语音信号)
 - `EMOTION2VEC_MODEL_DIR` (指向本地模型目录，如 `/media/chai/Data/Linux_AI_Resources/modelscope/hub/models/iic/emotion2vec_plus_large`)
 - `EMOTION2VEC_SAMPLE_RATE` (默认 `16000`，与模型 README 保持一致)
 
@@ -92,6 +93,7 @@ pip install -r requirements.txt
 这里显式声明这些包，不是因为“本机刚好装过”，而是因为当前 `ModelScope` 的音频情感识别路径在运行时会实际依赖它们：`modelscope.pipelines` 会导入 `addict` 和 `Pillow`，`funasr` 会进一步依赖 `torch` 和 `torchaudio`。为了保证新机器按 `pip install -r requirements.txt` 就能复现，这些依赖必须写进仓库契约。
 
 若本地模型目录不存在、依赖缺失或推理失败，系统会继续沿用原有传统声学特征链路，仅把 `voice_signals["emotion2vec_reading"]` 标记为 `unavailable` 或 `error`。
+当前版本同时会把该状态同步写入前端可见的 `trace.emotion2vec` 字段，用于联调确认本地推理是否真正生效。
 
 ## 启动服务
 
@@ -116,7 +118,7 @@ npm run dev -- --host 0.0.0.0
 conda activate llm_env
 conda run -n llm_env python -m pytest -q --tb=short
 ```
-> 当前主测试集为 100 个 pytest 用例，新增覆盖 emotion2vec service、配置读取、节点级降级与最小图契约。
+> 当前主测试集为 102 个 pytest 用例，新增覆盖 emotion2vec service、配置读取、节点级降级、WebSocket trace 暴露与最小图契约。
 
 ---
 

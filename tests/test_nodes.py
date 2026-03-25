@@ -139,7 +139,7 @@ def test_text_analyzer_does_not_extract_acoustic_observations():
 
 
 def test_voice_analyzer_extracts_from_precomputed_features(monkeypatch):
-    _set_emotion2vec_env(monkeypatch)
+    _set_emotion2vec_env(monkeypatch, ENABLE_EMOTION2VEC="false")
     state = {
         "session_id": "sess-voice-1",
         "chat_history": [{"role": "user", "content": "快考试了，我有点慌"}],
@@ -195,7 +195,7 @@ def test_voice_analyzer_uses_segment_features_over_multimodal():
 
 
 def test_voice_analyzer_returns_degraded_for_no_features(monkeypatch):
-    _set_emotion2vec_env(monkeypatch)
+    _set_emotion2vec_env(monkeypatch, ENABLE_EMOTION2VEC="false")
     state = {
         "chat_history": [],
         "multimodal_features": {},
@@ -211,7 +211,7 @@ def test_voice_analyzer_returns_degraded_for_no_features(monkeypatch):
 
 def test_voice_analyzer_processes_raw_audio_with_full_pipeline(monkeypatch):
     """Test the full pipeline: raw PCM → physical features + MFCC + emotion heuristic."""
-    _set_emotion2vec_env(monkeypatch)
+    _set_emotion2vec_env(monkeypatch, ENABLE_EMOTION2VEC="false")
     # Generate a synthetic 500ms sine wave with pauses
     sr = 16000
     t = np.arange(int(sr * 0.3), dtype=np.float32) / sr

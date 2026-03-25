@@ -51,9 +51,17 @@ def test_settings_reject_memory_checkpoint_backend_in_production(monkeypatch):
 
 def test_settings_expose_emotion2vec_defaults(monkeypatch):
     settings = _get_fresh_settings(monkeypatch)
-    assert settings.enable_emotion2vec is False
+    assert settings.enable_emotion2vec is True
     assert settings.emotion2vec_model_dir == ""
     assert settings.emotion2vec_sample_rate == 16000
+
+
+def test_settings_allow_explicitly_disabling_emotion2vec(monkeypatch):
+    settings = _get_fresh_settings(
+        monkeypatch,
+        ENABLE_EMOTION2VEC="false",
+    )
+    assert settings.enable_emotion2vec is False
 
 
 def test_settings_read_emotion2vec_env(monkeypatch):

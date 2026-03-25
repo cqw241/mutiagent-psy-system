@@ -4,6 +4,7 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 from app.api.routes import ws_chat
+from app.core.config import get_settings
 
 
 def test_ws_chat_emits_stage_token_final_and_end_events():
@@ -142,6 +143,44 @@ def test_voice_ws_emits_transcript_stage_token_final_and_end_events(monkeypatch)
         assert "trace" in final_payload
         assert final_payload["trace"]["latest_voice_segment"]["segment_id"] == "segment-000001"
         assert "risk_calibration" in final_payload["trace"]
+
+
+def test_voice_ws_trace_exposes_emotion2vec_status(monkeypatch):
+    monkeypatch.setattr(
+        ws_chat,
+        "create_voice_transcriber",
+        lambda: _FakeVoiceTranscriber(),
+    )
+    monkeypatch.setenv("ENABLE_EMOTION2VEC", "true")
+    monkeypatch.delenv("EMOTION2VEC_MODEL_DIR", raising=False)
+    get_settings.cache_clear()
+
+    client = TestClient(app)
+    try:
+        with client.websocket_connect("/ws/voice-chat/session-voice-e2v") as websocket:
+            websocket.send_bytes(b"voice-frame")
+            websocket.send_json(
+                {
+                    "type": "input_audio_buffer.commit",
+                    "multimodal_features": {"voice_energy": "elevated"},
+                    "user_profile": {"school": "demo-university"},
+                }
+            )
+
+            final_payload = None
+            for _ in range(200):
+                data = websocket.receive_json()
+                if data["type"] == "final":
+                    final_payload = data
+                if data["type"] == "end":
+                    break
+
+            assert final_payload is not None
+            assert final_payload["trace"]["emotion2vec"]["enabled"] is True
+            assert final_payload["trace"]["emotion2vec"]["status"] == "unavailable"
+            assert final_payload["trace"]["emotion2vec"]["used"] is False
+    finally:
+        get_settings.cache_clear()
 
 
 class _DisconnectRuntimeVoiceWebSocket:

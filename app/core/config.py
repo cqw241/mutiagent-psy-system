@@ -104,7 +104,7 @@ class Settings:
         default_factory=lambda: _env_str("CHECKPOINT_REDIS_URL", "")
     )
     enable_emotion2vec: bool = field(
-        default_factory=lambda: _env_bool("ENABLE_EMOTION2VEC", False)
+        default_factory=lambda: _env_bool("ENABLE_EMOTION2VEC", True)
     )
     emotion2vec_model_dir: str = field(
         default_factory=lambda: _env_str("EMOTION2VEC_MODEL_DIR", "")

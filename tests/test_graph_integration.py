@@ -111,7 +111,7 @@ def test_graph_can_recover_from_prior_high_risk_turn_in_same_thread():
 
 def test_graph_routes_voice_data_through_voice_analyzer(monkeypatch):
     """当 has_voice=True 时，voice_analyzer 应被触发。"""
-    _set_emotion2vec_env(monkeypatch)
+    _set_emotion2vec_env(monkeypatch, ENABLE_EMOTION2VEC="false")
     graph = build_graph()
     result = asyncio.run(
         graph.ainvoke(

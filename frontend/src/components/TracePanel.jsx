@@ -1,5 +1,13 @@
 import { motion, AnimatePresence } from 'framer-motion'
 
+function formatEmotion2vecStatus(status) {
+    if (status === 'ok') return '推理成功'
+    if (status === 'unavailable') return '暂不可用'
+    if (status === 'error') return '推理失败'
+    if (status === 'disabled') return '已关闭'
+    return status || '未知'
+}
+
 function TraceDebugPanel({ trace, open, onToggle }) {
     if (!trace) {
         return null
@@ -8,6 +16,7 @@ function TraceDebugPanel({ trace, open, onToggle }) {
     const latestSegment = trace.latest_voice_segment
     const observations = trace.acoustic_observations ?? []
     const calibration = trace.risk_calibration ?? {}
+    const emotion2vec = trace.emotion2vec ?? {}
 
     return (
         <div className="mt-5 rounded-[28px] border border-white/40 bg-[linear-gradient(145deg,#fbf5ec_0%,#eef2ec_100%)] p-5 shadow-sm transition-all hover:shadow-md">
@@ -43,6 +52,41 @@ function TraceDebugPanel({ trace, open, onToggle }) {
                             <div className="rounded-2xl bg-white/75 px-4 py-3 shadow-inner">
                                 <p className="flex justify-between"><span className="text-stone-400">支持等级:</span> <span className="font-medium text-amber-700">{trace.acoustic_support_level ?? 'none'}</span></p>
                                 <p className="flex justify-between"><span className="text-stone-400">风险校准:</span> <span>{calibration.base_score ?? 'N'} &rarr; {calibration.adjusted_score ?? 'N'}</span></p>
+                            </div>
+                            <div className="rounded-2xl bg-white/75 px-4 py-3 shadow-inner">
+                                <p className="mb-2 text-stone-400">emotion2vec 当前状态:</p>
+                                <div className="space-y-2">
+                                    <p className="flex justify-between">
+                                        <span className="text-stone-400">状态:</span>
+                                        <span className={`font-medium ${emotion2vec.status === 'ok' ? 'text-emerald-700' : emotion2vec.status === 'error' ? 'text-rose-700' : 'text-amber-700'}`}>
+                                            {formatEmotion2vecStatus(emotion2vec.status)}
+                                        </span>
+                                    </p>
+                                    <p className="flex justify-between">
+                                        <span className="text-stone-400">是否生效:</span>
+                                        <span>{emotion2vec.used ? '是' : '否'}</span>
+                                    </p>
+                                    <p className="flex justify-between">
+                                        <span className="text-stone-400">标签:</span>
+                                        <span className="font-mono">{emotion2vec.label ?? 'N/A'}</span>
+                                    </p>
+                                    <p className="flex justify-between">
+                                        <span className="text-stone-400">置信度:</span>
+                                        <span className="font-mono">
+                                            {typeof emotion2vec.confidence === 'number' ? emotion2vec.confidence.toFixed(4) : 'N/A'}
+                                        </span>
+                                    </p>
+                                    {emotion2vec.model_dir ? (
+                                        <p className="break-all rounded-xl bg-stone-50 px-3 py-2 text-xs leading-5 text-stone-500">
+                                            {emotion2vec.model_dir}
+                                        </p>
+                                    ) : null}
+                                    {emotion2vec.error ? (
+                                        <p className="rounded-xl border border-rose-100 bg-rose-50 px-3 py-2 text-xs leading-5 text-rose-700">
+                                            {emotion2vec.error}
+                                        </p>
+                                    ) : null}
+                                </div>
                             </div>
                             <div className="rounded-2xl bg-white/75 px-4 py-3 shadow-inner">
                                 <p className="mb-2 text-stone-400">听觉特征与情绪线索:</p>
