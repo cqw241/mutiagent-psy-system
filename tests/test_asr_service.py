@@ -4,6 +4,7 @@ from app.services.asr_service import (
     PCMChunkAudioTranscriber,
     FasterWhisperASRService,
     SpeechBufferState,
+    VoiceSegmentResult,
     WhisperSegment,
 )
 
@@ -126,6 +127,24 @@ def test_pcm_chunk_audio_transcriber_returns_segment_metadata():
     assert segment.transcript == "识别完成"
     assert "energy_mean" in segment.acoustic_features
     assert "speech_ratio" in segment.acoustic_features
+
+
+def test_voice_segment_state_dict_hides_audio_by_default():
+    segment = VoiceSegmentResult(
+        segment_id="segment-000001",
+        start_ms=0,
+        end_ms=420,
+        duration_ms=420,
+        transcript="识别完成",
+        acoustic_features={"energy_mean": 0.1},
+        audio_pcm=np.array([1, 2, 3], dtype=np.int16),
+    )
+
+    public_state = segment.to_state_dict()
+    internal_state = segment.to_state_dict(include_audio=True)
+
+    assert "audio_pcm" not in public_state
+    assert internal_state["audio_pcm"].tolist() == [1, 2, 3]
 
 
 def test_pcm_chunk_audio_transcriber_flushes_remaining_audio_on_commit():

@@ -99,9 +99,13 @@ class VoiceSegmentResult:
     duration_ms: int
     transcript: str
     acoustic_features: dict[str, Any]
+    audio_pcm: np.ndarray | None = None
 
-    def to_state_dict(self) -> dict[str, Any]:
-        return asdict(self)
+    def to_state_dict(self, *, include_audio: bool = False) -> dict[str, Any]:
+        payload = asdict(self)
+        if not include_audio:
+            payload.pop("audio_pcm", None)
+        return payload
 
 
 class FasterWhisperASRService:
@@ -424,6 +428,7 @@ class PCMChunkAudioTranscriber:
             duration_ms=duration_ms,
             transcript=text,
             acoustic_features=acoustic_features,
+            audio_pcm=utterance_pcm,
         )
 
     def _consume_frame(

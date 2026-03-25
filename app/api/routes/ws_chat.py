@@ -19,11 +19,16 @@ from uuid import uuid4
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from starlette.websockets import WebSocketState
 
+from app.core.config import get_settings
 from app.graph.workflow import get_compiled_graph
 from app.services.asr_service import (
     PCMChunkAudioTranscriber,
     FasterWhisperASRService,
     VoiceSegmentResult,
+)
+from app.services.emotion2vec_service import (
+    build_emotion2vec_reading,
+    get_emotion2vec_service,
 )
 from app.services.trace_service import build_trace_payload
 from app.utils.state_helpers import build_initial_state
@@ -179,14 +184,58 @@ def _segment_to_event_payload(segment: VoiceSegmentResult) -> dict:
     }
 
 
+def _build_voice_segment_state(
+    segment: VoiceSegmentResult,
+    emotion2vec_reading: dict | None = None,
+) -> dict:
+    segment_state = segment.to_state_dict()
+    if emotion2vec_reading is not None:
+        segment_state["emotion2vec_reading"] = emotion2vec_reading
+    return segment_state
+
+
 def _merge_voice_multimodal_features(
     base_features: dict | None,
     segment: VoiceSegmentResult,
+    emotion2vec_reading: dict | None = None,
 ) -> dict:
     features = dict(base_features or {})
     features["voice_acoustic_features"] = segment.acoustic_features
     features["latest_voice_segment"] = segment.to_state_dict()
+    if emotion2vec_reading is not None:
+        features["emotion2vec_reading"] = emotion2vec_reading
     return features
+
+
+async def _analyze_emotion2vec_for_segment(
+    segment: VoiceSegmentResult,
+) -> dict[str, object]:
+    settings = get_settings()
+
+    if not settings.enable_emotion2vec:
+        return build_emotion2vec_reading(
+            status="disabled",
+            model_dir=settings.emotion2vec_model_dir or None,
+        )
+
+    audio_pcm = getattr(segment, "audio_pcm", None)
+    if audio_pcm is None:
+        return build_emotion2vec_reading(
+            status="unavailable",
+            model_dir=settings.emotion2vec_model_dir or None,
+            error="Raw audio unavailable for emotion2vec inference.",
+        )
+
+    try:
+        service = get_emotion2vec_service(settings)
+        return await asyncio.to_thread(service.analyze, audio_pcm)
+    except Exception as exc:  # pragma: no cover - defensive guard
+        logger.warning("Emotion2Vec segment inference failed unexpectedly: %s", exc)
+        return build_emotion2vec_reading(
+            status="error",
+            model_dir=settings.emotion2vec_model_dir or None,
+            error=str(exc),
+        )
 
 
 def _process_voice_chunk(transcriber: object, raw_chunk: bytes) -> list[VoiceSegmentResult]:
@@ -297,6 +346,7 @@ async def websocket_voice_chat(websocket: WebSocket, session_id: str) -> None:
             if raw_chunk is not None:
                 segments = _process_voice_chunk(transcriber, raw_chunk)
                 for segment in segments:
+                    emotion2vec_reading = await _analyze_emotion2vec_for_segment(segment)
                     if not await _send_json_if_open(
                         websocket,
                         _segment_to_event_payload(segment),
@@ -310,8 +360,14 @@ async def websocket_voice_chat(websocket: WebSocket, session_id: str) -> None:
                         multimodal_features=_merge_voice_multimodal_features(
                             voice_context["multimodal_features"],
                             segment,
+                            emotion2vec_reading=emotion2vec_reading,
                         ),
-                        voice_segments=[segment.to_state_dict()],
+                        voice_segments=[
+                            _build_voice_segment_state(
+                                segment,
+                                emotion2vec_reading=emotion2vec_reading,
+                            )
+                        ],
                     )
                 continue
 
@@ -330,6 +386,7 @@ async def websocket_voice_chat(websocket: WebSocket, session_id: str) -> None:
             if payload.get("type") == "input_audio_buffer.commit":
                 segment = _flush_voice_segment(transcriber)
                 if segment:
+                    emotion2vec_reading = await _analyze_emotion2vec_for_segment(segment)
                     if not await _send_json_if_open(
                         websocket,
                         _segment_to_event_payload(segment),
@@ -343,8 +400,14 @@ async def websocket_voice_chat(websocket: WebSocket, session_id: str) -> None:
                         multimodal_features=_merge_voice_multimodal_features(
                             voice_context["multimodal_features"],
                             segment,
+                            emotion2vec_reading=emotion2vec_reading,
                         ),
-                        voice_segments=[segment.to_state_dict()],
+                        voice_segments=[
+                            _build_voice_segment_state(
+                                segment,
+                                emotion2vec_reading=emotion2vec_reading,
+                            )
+                        ],
                     )
     except WebSocketDisconnect:
         return

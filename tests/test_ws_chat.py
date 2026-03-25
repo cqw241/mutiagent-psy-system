@@ -152,7 +152,28 @@ def test_voice_ws_trace_exposes_emotion2vec_status(monkeypatch):
         lambda: _FakeVoiceTranscriber(),
     )
     monkeypatch.setenv("ENABLE_EMOTION2VEC", "true")
-    monkeypatch.delenv("EMOTION2VEC_MODEL_DIR", raising=False)
+    monkeypatch.setenv("EMOTION2VEC_MODEL_DIR", "/tmp/emotion2vec")
+
+    async def _fake_analyze(segment):
+        assert segment.segment_id == "segment-000001"
+        return {
+            "status": "ok",
+            "source": "emotion2vec_plus_large",
+            "model_dir": "/tmp/emotion2vec",
+            "emotion_label": "sad",
+            "confidence": 0.88,
+            "topk": [{"label": "sad", "score": 0.88}],
+            "observation": "语音情绪类别更接近 sad。",
+            "raw_output": {"labels": ["sad"], "scores": [0.88]},
+            "error": None,
+        }
+
+    monkeypatch.setattr(
+        ws_chat,
+        "_analyze_emotion2vec_for_segment",
+        _fake_analyze,
+        raising=False,
+    )
     get_settings.cache_clear()
 
     client = TestClient(app)
@@ -177,8 +198,10 @@ def test_voice_ws_trace_exposes_emotion2vec_status(monkeypatch):
 
             assert final_payload is not None
             assert final_payload["trace"]["emotion2vec"]["enabled"] is True
-            assert final_payload["trace"]["emotion2vec"]["status"] == "unavailable"
-            assert final_payload["trace"]["emotion2vec"]["used"] is False
+            assert final_payload["trace"]["emotion2vec"]["status"] == "ok"
+            assert final_payload["trace"]["emotion2vec"]["used"] is True
+            assert final_payload["trace"]["emotion2vec"]["label"] == "sad"
+            assert "audio_pcm" not in final_payload["trace"]["latest_voice_segment"]
     finally:
         get_settings.cache_clear()
 

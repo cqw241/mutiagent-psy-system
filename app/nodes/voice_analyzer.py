@@ -77,6 +77,24 @@ def _build_emotion2vec_no_audio_reading(settings: Any) -> dict[str, Any]:
     )
 
 
+def _resolve_precomputed_emotion2vec_reading(
+    state: dict[str, Any],
+) -> dict[str, Any] | None:
+    voice_segments = state.get("voice_segments", [])
+    if voice_segments:
+        latest_segment = voice_segments[-1]
+        reading = latest_segment.get("emotion2vec_reading")
+        if isinstance(reading, dict) and reading.get("status"):
+            return reading
+
+    multimodal = state.get("multimodal_features", {})
+    reading = multimodal.get("emotion2vec_reading")
+    if isinstance(reading, dict) and reading.get("status"):
+        return reading
+
+    return None
+
+
 async def _run_emotion2vec_analysis(
     settings: Any,
     audio: np.ndarray,
@@ -224,7 +242,9 @@ async def voice_analyzer_node(
     if audio is None or audio.size == 0:
         # 没有原始音频，尝试从预计算特征回退
         voice_signals = _fallback_from_segment_features(state)
-        emotion2vec_reading = _build_emotion2vec_no_audio_reading(settings)
+        emotion2vec_reading = _resolve_precomputed_emotion2vec_reading(
+            state
+        ) or _build_emotion2vec_no_audio_reading(settings)
         voice_signals["emotion2vec_reading"] = emotion2vec_reading
         judgment = {
             "has_voice_data": bool(voice_signals.get("features")),

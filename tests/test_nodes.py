@@ -170,6 +170,63 @@ def test_voice_analyzer_extracts_from_precomputed_features(monkeypatch):
     assert updated["agent_judgments"]["voice_analyzer"]["has_voice_data"] is True
 
 
+def test_voice_analyzer_reuses_precomputed_emotion2vec_reading_without_raw_audio(
+    monkeypatch,
+):
+    _set_emotion2vec_env(
+        monkeypatch,
+        ENABLE_EMOTION2VEC="true",
+        EMOTION2VEC_MODEL_DIR="/tmp/emotion2vec",
+    )
+    reading = {
+        "status": "ok",
+        "source": "emotion2vec_plus_large",
+        "model_dir": "/tmp/emotion2vec",
+        "emotion_label": "sad",
+        "confidence": 0.82,
+        "topk": [{"label": "sad", "score": 0.82}],
+        "observation": "语音情绪类别更接近 sad。",
+        "raw_output": {"labels": ["sad"], "scores": [0.82]},
+        "error": None,
+    }
+    state = {
+        "chat_history": [{"role": "user", "content": "最近说话有点沉"}],
+        "multimodal_features": {},
+        "voice_segments": [
+            {
+                "segment_id": "seg-1",
+                "acoustic_features": {
+                    "pause_count": 4,
+                    "pause_total_ms": 2200,
+                    "pause_mean_ms": 550.0,
+                    "voiced_duration_ms": 1800,
+                    "speech_ratio": 0.42,
+                    "mean_f0": None,
+                    "f0_std": None,
+                    "energy_mean": 0.02,
+                    "energy_std": 0.0004,
+                    "rms_mean": 0.09,
+                    "rms_std": 0.005,
+                },
+                "emotion2vec_reading": reading,
+            }
+        ],
+        "agent_judgments": {},
+    }
+
+    try:
+        updated = asyncio.run(voice_analyzer_node(state))
+    finally:
+        get_settings.cache_clear()
+
+    assert updated["voice_signals"]["emotion2vec_reading"] == reading
+    judgment = updated["agent_judgments"]["voice_analyzer"]
+    assert judgment["emotion2vec_enabled"] is True
+    assert judgment["emotion2vec_used"] is True
+    assert judgment["emotion2vec_status"] == "ok"
+    assert judgment["emotion2vec_label"] == "sad"
+
+
 def test_voice_analyzer_uses_segment_features_over_multimodal():
     state = {
         "chat_history": [],
