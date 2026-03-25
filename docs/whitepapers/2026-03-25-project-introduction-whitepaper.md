@@ -13,7 +13,7 @@
 
 本项目是一套面向高校场景的多智能体心理风险早期识别与转介辅助系统，目标是围绕学生日常文本与语音交互信号，提供非诊断性的风险识别、温和回应、规范转介与辅导员告警能力。系统不替代心理咨询师，不输出医学诊断结论，不提供治疗方案，而是服务于“早发现、早响应、早转介”的校园支持闭环。
 
-截至 2026 年 3 月 25 日，项目已完成从线性单链路原型向 LangGraph 多智能体并行架构的升级，后端已落地 8 节点图拓扑、文本与语音并行分析、条件转介、RAG 检索增强、单机会话恢复、REST 与 WebSocket 双接口，以及 React 前端联调原型。仓库当前自动化测试共 102 个 Pytest 用例，实测全部通过，表明该系统已具备“可联调、可演示、可持续硬化”的试点前工程基础。
+截至 2026 年 3 月 25 日，项目已完成从线性单链路原型向 LangGraph 多智能体并行架构的升级，后端已落地 8 节点图拓扑、文本与语音并行分析、条件转介、RAG 检索增强、单机会话恢复、REST 与 WebSocket 双接口，以及 React 前端联调原型。仓库当前自动化测试共 104 个 Pytest 用例，实测全部通过，表明该系统已具备“可联调、可演示、可持续硬化”的试点前工程基础。
 
 ---
 
@@ -105,18 +105,106 @@
 
 当前实际工作流如下：
 
-```text
-START
-  -> modality_router
-     -> text_analyzer
-     -> voice_analyzer   (if has_voice)
-     -> face_analyzer    (if has_face)
-  -> signal_aggregator
-  -> rag_retriever
-  -> risk_assessor
-  -> risk_router
-     -> referral_agent -> response_generator -> END
-     -> response_generator -> END
+```mermaid
+flowchart LR
+    subgraph Client["交互入口"]
+        WebText["Web 前端文本输入"]
+        WebVoice["Web 前端语音输入"]
+        External["外部系统 / 调试客户端"]
+    end
+
+    subgraph API["FastAPI 接口层"]
+        ChatRoute["POST /chat"]
+        WsChat["WS /ws/chat/{session_id}"]
+        WsVoice["WS /ws/voice-chat/{session_id}"]
+    end
+
+    subgraph VoiceIngress["语音入口预处理"]
+        PCM["PCM Chunk 输入"]
+        Transcriber["PCMChunkAudioTranscriber"]
+        Whisper["faster-whisper ASR"]
+        Acoustic["AcousticFeatureExtractor"]
+        E2VIngress["emotion2vec segment inference"]
+        Segment["VoiceSegmentResult / voice_segments"]
+    end
+
+    subgraph StateLayer["状态与会话层"]
+        Init["build_initial_state"]
+        State["PsychologyGraphState"]
+        Checkpoint["Checkpointer\nmemory / file"]
+    end
+
+    subgraph Graph["LangGraph 多智能体工作流"]
+        Router{"modality_router"}
+        Text["text_analyzer"]
+        Voice["voice_analyzer"]
+        Face["face_analyzer"]
+        Aggregate["signal_aggregator"]
+        RAG["rag_retriever"]
+        Risk["risk_assessor"]
+        Decision{"risk_router"}
+        Referral["referral_agent"]
+        Response["response_generator"]
+    end
+
+    subgraph Support["外部能力 / 辅助服务"]
+        RagStore["RAGFlow / 相似案例库"]
+        E2V["emotion2vec_plus_large"]
+        Alert["Counselor Alert Webhook"]
+        Trace["build_trace_payload"]
+    end
+
+    subgraph Output["系统输出"]
+        Reply["reply / token stream"]
+        Hotline["hotline_card"]
+        TraceOut["trace / trace_id"]
+        AlertOut["alert_status"]
+    end
+
+    WebText --> ChatRoute
+    WebText --> WsChat
+    WebVoice --> WsVoice
+    External --> ChatRoute
+    External --> WsChat
+
+    WsVoice --> PCM --> Transcriber
+    Transcriber --> Whisper
+    Transcriber --> Acoustic
+    Transcriber --> Segment
+    Segment --> E2VIngress
+    E2VIngress -.调用.-> E2V
+
+    ChatRoute --> Init
+    WsChat --> Init
+    WsVoice --> Init
+    Segment --> Init
+    Init --> State
+    State <--> Checkpoint
+
+    State --> Router
+    Router --> Text
+    Router --> Voice
+    Router --> Face
+    Text --> Aggregate
+    Voice --> Aggregate
+    Face --> Aggregate
+    Aggregate --> RAG
+    RAG -.检索.-> RagStore
+    RAG --> Risk
+    Risk --> Decision
+    Decision -->|high| Referral
+    Decision -->|low / medium| Response
+    Referral --> Alert
+    Referral --> Response
+
+    Voice -.深度 SER.-> E2V
+    Response --> Reply
+    Response --> Hotline
+    Response --> Trace
+    Risk --> Trace
+    Voice --> Trace
+    Referral --> AlertOut
+    Trace --> TraceOut
 ```
 
 这一设计已经具备三个关键价值：
@@ -284,8 +372,8 @@ START
 
 截至本白皮书编写时，仓库实测结果如下：
 
-- Pytest 自动化测试总数：100
-- 测试结果：102 通过
+- Pytest 自动化测试总数：104
+- 测试结果：104 通过
 - 本次验证耗时：7.59 秒
 
 测试覆盖内容已包括：
@@ -437,7 +525,7 @@ START
 | 语音增强 | 支持可选 `emotion2vec_plus_large` |
 | 面部能力 | 已打通接口，占位实现 |
 | 高风险闭环 | 强制进入转介与 webhook 告警 |
-| 自动化测试 | 102 个 Pytest 用例通过 |
+| 自动化测试 | 104 个 Pytest 用例通过 |
 
 ## 附录 B：建议使用方式
 

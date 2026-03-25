@@ -14,6 +14,26 @@
 - **Conditional Referral**: 依据风险等级通过 `risk_router` 决定是否触发独立的 `referral_agent`。
 - **Response**: `response_generator` 生成温暖、同理心的回复。
 
+精简版核心图如下，统一源文件见 [core-architecture-mermaid.md](docs/diagrams/core-architecture-mermaid.md)：
+
+```mermaid
+flowchart LR
+    Start([START]) --> Router{modality_router}
+    Router --> Text[text_analyzer]
+    Router --> Voice[voice_analyzer]
+    Router --> Face[face_analyzer]
+    Text --> Aggregate[signal_aggregator]
+    Voice --> Aggregate
+    Face --> Aggregate
+    Aggregate --> RAG[rag_retriever]
+    RAG --> Risk[risk_assessor]
+    Risk --> Decision{risk_router}
+    Decision -->|high| Referral[referral_agent]
+    Decision -->|low / medium| Response[response_generator]
+    Referral --> Response
+    Response --> End([END])
+```
+
 ### 2. 音频到情绪的分析链路 (Audio-to-Emotion Pipeline)
 - **多维度特征提取**: 依托 `librosa`、`scipy` 实现了 F0、RMS、Silence Ratio 等物理声学特征提取，且新增了 **MFCC（梅尔频率倒谱系数）** 处理。
 - **异步非阻塞设计**: 音频处理 CPU 密集型任务已转入 `asyncio.to_thread`，无缝接入 FastAPI / WebSocket 异步事件流。
@@ -38,7 +58,7 @@
 ### 5. 健壮的工程设施
 - 所有重复状态访问和组装提取到 `app/utils/state_helpers.py`（符合 DRY 原则）。
 - 为高并发场景添加了 LangGraph 的安全并发写策略（自定义 `merge_dicts` reducer 解决 `agent_judgments` 写入竞争）。
-- **自动化测试保障**：102 个 pytest 自动化测试通过，覆盖路由器规则、各个独立 Node 回退链路、emotion2vec service 降级路径、WebSocket trace 暴露、物理/MFCC 音频特征提取及整个 Graph 整合运行。
+- **自动化测试保障**：104 个 pytest 自动化测试通过，覆盖路由器规则、各个独立 Node 回退链路、emotion2vec service 降级路径、WebSocket trace 暴露、物理/MFCC 音频特征提取及整个 Graph 整合运行。
 
 ---
 
@@ -118,7 +138,7 @@ npm run dev -- --host 0.0.0.0
 conda activate llm_env
 conda run -n llm_env python -m pytest -q --tb=short
 ```
-> 当前主测试集为 102 个 pytest 用例，新增覆盖 emotion2vec service、配置读取、节点级降级、WebSocket trace 暴露与最小图契约。
+> 当前主测试集为 104 个 pytest 用例，新增覆盖 emotion2vec service、配置读取、节点级降级、WebSocket trace 暴露与最小图契约。
 
 ---
 
