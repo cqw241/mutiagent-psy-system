@@ -16,6 +16,10 @@ from typing import Any
 
 from app.core.config import get_settings
 from app.models.schemas import ChatMessage
+from app.prompts import (
+    build_response_generator_system_prompt,
+    build_response_generator_user_prompt,
+)
 from app.services.llm_client import BaseLLMClient, LiteLLMClient
 from app.utils.state_helpers import latest_user_message, merge_agent_judgment
 from langgraph.config import get_stream_writer
@@ -55,13 +59,7 @@ async def response_generator_node(
     latest_text = latest_user_message(state)
     used_llm = False
 
-    stream_system_prompt = (
-        "你是高校心理支持对话中的回复生成节点。"
-        "请直接输出自然、温和、简洁的中文纯文本回复。"
-        "不要输出 JSON、Markdown、代码块、字段名或多余前缀。"
-        "你的回复应当像真实对话，而不是结构化数据。"
-        "语气应温暖、非评判性，像一位关心同学的学姐/学长。"
-    )
+    stream_system_prompt = build_response_generator_system_prompt()
 
     if risk_level == "high":
         # 高风险：referral_agent 已设置了温和过渡话术作为 reply
@@ -82,11 +80,7 @@ async def response_generator_node(
             reply = fallback
     elif risk_level == "medium":
         used_llm = True
-        user_prompt = (
-            f"风险等级：{risk_level}\n"
-            f"用户输入：{latest_text}\n"
-            "请直接回复用户。"
-        )
+        user_prompt = build_response_generator_user_prompt(risk_level, latest_text)
         reply = await _stream_text_to_writer(
             llm,
             writer,
@@ -96,11 +90,7 @@ async def response_generator_node(
         )
     else:
         used_llm = True
-        user_prompt = (
-            f"风险等级：{risk_level}\n"
-            f"用户输入：{latest_text}\n"
-            "请直接回复用户。"
-        )
+        user_prompt = build_response_generator_user_prompt(risk_level, latest_text)
         reply = await _stream_text_to_writer(
             llm,
             writer,

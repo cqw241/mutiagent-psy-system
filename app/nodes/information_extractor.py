@@ -11,8 +11,10 @@ from __future__ import annotations
 from typing import Any
 
 from app.core.config import get_settings
+from app.prompts import build_information_extractor_prompts
 from app.services.acoustic_fusion_service import extract_acoustic_observations
 from app.services.llm_client import BaseLLMClient, LiteLLMClient
+from app.utils.state_helpers import latest_user_message, merge_agent_judgment
 
 EMOTION_KEYWORDS = [
     "痛苦",
@@ -24,15 +26,6 @@ EMOTION_KEYWORDS = [
     "崩溃",
     "害怕",
 ]
-
-
-def _latest_user_message(state: dict[str, Any]) -> str:
-    for message in reversed(state.get("chat_history", [])):
-        if message.get("role") == "user":
-            return message.get("content", "")
-    return ""
-
-
 def _rule_extract_keywords(text: str) -> list[str]:
     return [keyword for keyword in EMOTION_KEYWORDS if keyword in text]
 
@@ -46,20 +39,14 @@ def information_extractor_node(
     """
 
     llm = llm_client or LiteLLMClient(get_settings())
-    latest_text = _latest_user_message(state)
+    latest_text = latest_user_message(state)
     multimodal = state.get("multimodal_features", {})
     acoustic_features = multimodal.get("voice_acoustic_features", {})
     acoustic_observations = extract_acoustic_observations(acoustic_features)
 
-    system_prompt = (
-        "你是高校心理风险识别系统中的信息提取节点。"
-        "请从用户文本与多模态线索中提取 emotion_keywords、sentiment、observations，"
-        "仅返回 JSON。"
-    )
-    user_prompt = (
-        f"用户文本：{latest_text}\n"
-        f"多模态特征：{multimodal}\n"
-        "返回字段：emotion_keywords(list[str])、sentiment(str)、observations(list[str])。"
+    system_prompt, user_prompt = build_information_extractor_prompts(
+        latest_text,
+        multimodal,
     )
     llm_result = llm.complete_json(system_prompt, user_prompt)
 
@@ -72,8 +59,7 @@ def information_extractor_node(
         "multimodal_summary": multimodal,
     }
 
-    agent_judgments = dict(state.get("agent_judgments", {}))
-    agent_judgments["information_extractor"] = {
+    judgment = {
         "latest_text": latest_text,
         "used_llm": bool(llm_result),
         "acoustic_observations": acoustic_observations,
@@ -82,5 +68,7 @@ def information_extractor_node(
 
     return {
         "extracted_signals": extracted_signals,
-        "agent_judgments": agent_judgments,
+        "agent_judgments": merge_agent_judgment(
+            state, "information_extractor", judgment
+        ),
     }

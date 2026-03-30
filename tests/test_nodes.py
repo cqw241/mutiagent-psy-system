@@ -1,4 +1,5 @@
 import asyncio
+from typing import Any
 
 import numpy as np
 
@@ -6,6 +7,7 @@ from app.core.config import get_settings
 from app.nodes.text_analyzer import text_analyzer_node
 from app.nodes.voice_analyzer import voice_analyzer_node
 from app.nodes.face_analyzer import face_analyzer_node
+from app.nodes.information_extractor import information_extractor_node
 from app.nodes.signal_aggregator import signal_aggregator_node
 from app.nodes.risk_assessor import risk_assessor_node
 from app.nodes.response_generator import response_generator_node
@@ -54,6 +56,16 @@ class DummyExtractorLLM:
             "sentiment": "stressed",
             "observations": ["文本提到临近考试，压力较高"],
         }
+
+
+class PromptRecordingLLM:
+    def __init__(self, response: dict[str, Any]):
+        self.response = response
+        self.calls: list[tuple[str, str]] = []
+
+    def complete_json(self, system_prompt: str, user_prompt: str):
+        self.calls.append((system_prompt, user_prompt))
+        return self.response
 
 
 class DummyAsyncAlertService:
@@ -133,6 +145,62 @@ def test_text_analyzer_does_not_extract_acoustic_observations():
     }
     updated = text_analyzer_node(state, llm_client=DummyExtractorLLM())
     assert "acoustic_observations" not in updated["text_signals"]
+
+
+def test_text_analyzer_uses_centralized_prompt_builder(monkeypatch):
+    llm = PromptRecordingLLM(
+        {
+            "emotion_keywords": ["焦虑"],
+            "sentiment": "stressed",
+            "observations": ["考试压力较高"],
+        }
+    )
+    monkeypatch.setattr(
+        "app.nodes.text_analyzer.build_text_analyzer_prompts",
+        lambda *_args, **_kwargs: ("text-system-sentinel", "text-user-sentinel"),
+        raising=False,
+    )
+    state = {
+        "session_id": "sess-1",
+        "chat_history": [{"role": "user", "content": "最近有些焦虑"}],
+        "multimodal_features": {},
+        "agent_judgments": {},
+    }
+
+    text_analyzer_node(state, llm_client=llm)
+
+    assert llm.calls == [("text-system-sentinel", "text-user-sentinel")]
+
+
+def test_information_extractor_uses_centralized_prompt_builder(monkeypatch):
+    llm = PromptRecordingLLM(
+        {
+            "emotion_keywords": ["焦虑"],
+            "sentiment": "stressed",
+            "observations": ["多模态线索提示考试压力"],
+        }
+    )
+    monkeypatch.setattr(
+        "app.nodes.information_extractor.build_information_extractor_prompts",
+        lambda *_args, **_kwargs: ("info-system-sentinel", "info-user-sentinel"),
+        raising=False,
+    )
+    state = {
+        "session_id": "sess-info-1",
+        "chat_history": [{"role": "user", "content": "最近有点焦虑"}],
+        "multimodal_features": {
+            "voice_acoustic_features": {
+                "pause_count": 3,
+                "pause_total_ms": 1800,
+            }
+        },
+        "agent_judgments": {},
+    }
+
+    updated = information_extractor_node(state, llm_client=llm)
+
+    assert llm.calls == [("info-system-sentinel", "info-user-sentinel")]
+    assert updated["extracted_signals"]["emotion_keywords"] == ["焦虑"]
 
 
 # ── Voice Analyzer Tests ──
@@ -302,6 +370,44 @@ def test_voice_analyzer_processes_raw_audio_with_full_pipeline(monkeypatch):
     assert jdg["feature_source"] == "raw_audio"
     assert jdg["mfcc_extracted"] is True
     assert jdg["emotion2vec_status"] == "disabled"
+
+
+def test_voice_analyzer_uses_centralized_prompt_builder(monkeypatch):
+    _set_emotion2vec_env(monkeypatch, ENABLE_EMOTION2VEC="false")
+    llm = PromptRecordingLLM(
+        {
+            "observation": "语音表现平稳。",
+            "emotion_label": "neutral",
+            "confidence": 0.6,
+        }
+    )
+    monkeypatch.setattr(
+        "app.nodes.voice_analyzer._extract_all_features",
+        lambda _audio: {
+            "physical_features": {"energy_mean": 0.1},
+            "mfcc_features": {"n_mfcc": 13, "n_frames": 2},
+            "emotion_heuristic": {"dominant_cue": "stable", "confidence": 0.6},
+        },
+    )
+    monkeypatch.setattr(
+        "app.nodes.voice_analyzer.extract_acoustic_observations",
+        lambda _features: ["speech_ratio_low"],
+    )
+    monkeypatch.setattr(
+        "app.nodes.voice_analyzer.build_voice_analyzer_prompts",
+        lambda *_args, **_kwargs: ("voice-system-sentinel", "voice-user-sentinel"),
+        raising=False,
+    )
+    state = {
+        "chat_history": [{"role": "user", "content": "最近说话有点慢"}],
+        "multimodal_features": {"audio_pcm": np.array([0.1, -0.1], dtype=np.float32)},
+        "voice_segments": [],
+        "agent_judgments": {},
+    }
+
+    asyncio.run(voice_analyzer_node(state, llm_client=llm))
+
+    assert llm.calls == [("voice-system-sentinel", "voice-user-sentinel")]
 
 
 def test_voice_analyzer_adds_emotion2vec_reading_without_breaking_legacy_pipeline(
@@ -573,6 +679,36 @@ def test_risk_assessor_marks_reference_context_usage():
     assert updated["agent_judgments"]["risk_assessor"]["reference_context_used"] is True
 
 
+def test_risk_assessor_uses_centralized_prompt_builder(monkeypatch):
+    llm = PromptRecordingLLM(
+        {
+            "risk_level": "medium",
+            "risk_score": 0.65,
+            "reason": "需要更多支持",
+        }
+    )
+    monkeypatch.setattr(
+        "app.nodes.risk_assessor.build_risk_assessor_prompts",
+        lambda *_args, **_kwargs: ("risk-system-sentinel", "risk-user-sentinel"),
+        raising=False,
+    )
+    state = {
+        "session_id": "sess-1",
+        "chat_history": [{"role": "user", "content": "最近很痛苦"}],
+        "multimodal_features": {},
+        "current_risk_score": 0.0,
+        "agent_judgments": {},
+        "extracted_signals": {"emotion_keywords": ["痛苦"]},
+        "reference_context": "",
+        "risk_level": "low",
+        "referral_required": False,
+    }
+
+    risk_assessor_node(state, llm_client=llm)
+
+    assert llm.calls == [("risk-system-sentinel", "risk-user-sentinel")]
+
+
 def test_risk_assessor_does_not_escalate_benign_message_from_llm_misfire():
     state = {
         "session_id": "sess-1",
@@ -796,6 +932,42 @@ def test_response_generator_streams_reply_for_low_risk():
     assert llm.complete_json_calls == 0
     assert llm.stream_prompts
     assert "仅返回 JSON" not in llm.stream_prompts[0][0]
+
+
+def test_response_generator_uses_centralized_prompt_builders(monkeypatch):
+    llm = DummyStreamingLLM()
+    monkeypatch.setattr(
+        "app.nodes.response_generator.build_response_generator_system_prompt",
+        lambda: "response-system-sentinel",
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "app.nodes.response_generator.build_response_generator_user_prompt",
+        lambda *_args, **_kwargs: "response-user-sentinel",
+        raising=False,
+    )
+    state = {
+        "session_id": "sess-1",
+        "trace_id": "trace-1",
+        "chat_history": [{"role": "user", "content": "有什么舒缓的音乐推荐？"}],
+        "multimodal_features": {},
+        "current_risk_score": 0.2,
+        "agent_judgments": {},
+        "extracted_signals": {"emotion_keywords": []},
+        "risk_level": "low",
+        "referral_required": False,
+        "reference_context": "",
+    }
+
+    asyncio.run(response_generator_node(state, llm_client=llm))
+
+    assert llm.stream_prompts == [
+        (
+            "response-system-sentinel",
+            "response-user-sentinel",
+            "谢谢你愿意分享现在的感受。我会先陪你梳理一下，你最近最明显的情绪变化是什么？",
+        )
+    ]
 
 
 def test_response_generator_uses_referral_reply_for_high_risk():

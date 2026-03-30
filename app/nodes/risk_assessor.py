@@ -12,6 +12,7 @@ import re
 from typing import Any
 
 from app.core.config import get_settings
+from app.prompts import build_risk_assessor_prompts
 from app.services.acoustic_fusion_service import (
     calibrate_risk_score,
     extract_acoustic_observations,
@@ -131,31 +132,12 @@ def risk_assessor_node(
             "agent_judgments": merge_agent_judgment(state, "risk_assessor", judgment),
         }
 
-    system_prompt = (
-        "你是高校心理风险评估节点。请只评估用户当前这一轮输入，不要因为上一轮对话而延续高风险标签。"
-        "只有在当前输入明确提到自杀、自残、结束生命、伤害自己，或极端暴力威胁时，才允许给出 high。"
-        "失眠、心情不好、焦虑、想聊天、问音乐推荐、寻求舒缓建议，这些都不是 high。"
-        "不要把一般性的考试压力、学业挫败、情绪化抱怨、和 AI 争论、说自己很笨、说复习不完，当成危机。"
-        "负面示例：'我最近睡不着'、'快考试了我复习不完'、'有什么舒缓的音乐推荐？'、'我是不是太蠢了'、"
-        "'我都说了快考试我复习不完了'，这些都不能标记为 high。"
-        "正面示例：'我不想活了'、'我想死'、'我要跳楼'、'我准备吞药'、'我在写遗书'，这些才可以标记为 high。"
-        "如果没有明确自伤/自杀/极端暴力表达，就只能输出 low 或 medium。"
-        "语音声学特征只作为辅助观察量，例如停顿增多、speech_ratio 降低、能量波动异常；"
-        "它们不能单独推导出情绪分类、医学判断或 high 风险。"
-        "请基于文本和提取线索输出 risk_level、risk_score、reason，"
-        "仅返回 JSON，risk_level 只能是 low/medium/high。\n"
-        "<Reference_Cases>\n"
-        f"{reference_context or '无检索结果'}\n"
-        "</Reference_Cases>\n"
-        "请结合这些检索到的历史相似案例和心理评估标准，对当前用户的状况进行风险打分。"
-        "如果有矛盾，优先参考 RAG 提供的专业标准。"
-    )
-    user_prompt = (
-        f"用户文本：{latest_text}\n"
-        f"提取线索：{keywords}\n"
-        f"声学观察项：{acoustic_observations or '无'}\n"
-        f"声学支持强度：{acoustic_support_level}\n"
-        f"参考上下文是否存在：{'是' if reference_context else '否'}"
+    system_prompt, user_prompt = build_risk_assessor_prompts(
+        latest_text=latest_text,
+        keywords=keywords,
+        acoustic_observations=acoustic_observations,
+        acoustic_support_level=acoustic_support_level,
+        reference_context=reference_context,
     )
     llm_result = llm.complete_json(system_prompt, user_prompt)
 

@@ -22,6 +22,7 @@ from typing import Any
 import numpy as np
 
 from app.core.config import get_settings
+from app.prompts import build_voice_analyzer_prompts
 from app.services.acoustic_feature_service import (
     AcousticFeatureExtractor,
     decode_audio_input,
@@ -164,35 +165,6 @@ def _extract_all_features(audio: np.ndarray) -> dict[str, Any]:
     }
 
 
-def _build_llm_prompt(
-    features: dict[str, Any],
-    user_text: str,
-    emotion_heuristic: dict[str, Any],
-) -> tuple[str, str]:
-    """构建给 LLM 的声学情绪语义判读提示词。"""
-
-    system_prompt = (
-        "你是一位高校心理风险识别系统中的语音分析辅助节点。"
-        "你将收到结构化的声学特征数据和启发式情绪推断结果。"
-        "请基于这些数据，用 1-2 句极简的中文对用户当前的语音情绪状态做一个"
-        "中性、客观的情绪观察（注意：不是诊断，不是治疗建议）。"
-        "同时给出一个 emotion_label（只能是 neutral / low_mood / anxious / "
-        "agitated / stressed / flat_affect 之一）和一个 confidence（0~1）。"
-        "仅返回 JSON，格式：{\"observation\": str, \"emotion_label\": str, \"confidence\": float}"
-    )
-
-    user_prompt = (
-        f"声学物理特征：{features.get('physical_features', {})}\n"
-        f"MFCC 统计：n_mfcc={features.get('mfcc_features', {}).get('n_mfcc', 0)}, "
-        f"帧数={features.get('mfcc_features', {}).get('n_frames', 0)}\n"
-        f"启发式情绪推断：{emotion_heuristic}\n"
-        f"用户文本（如有）：{user_text or '无文本输入'}\n"
-        "请给出你的情绪观察。"
-    )
-
-    return system_prompt, user_prompt
-
-
 def _fallback_from_segment_features(state: dict[str, Any]) -> dict[str, Any]:
     """当无 raw audio 但 voice_segments 中有预提取特征时，回退处理。"""
 
@@ -290,7 +262,7 @@ async def voice_analyzer_node(
     llm_emotion_reading: dict[str, Any] | None = None
     try:
         llm = llm_client or LiteLLMClient(get_settings())
-        sys_prompt, usr_prompt = _build_llm_prompt(
+        sys_prompt, usr_prompt = build_voice_analyzer_prompts(
             all_features, user_text, emotion_heuristic
         )
         llm_result = llm.complete_json(sys_prompt, usr_prompt)

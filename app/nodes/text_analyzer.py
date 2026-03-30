@@ -12,6 +12,7 @@ from __future__ import annotations
 from typing import Any
 
 from app.core.config import get_settings
+from app.prompts import build_text_analyzer_prompts
 from app.services.llm_client import BaseLLMClient, LiteLLMClient
 from app.utils.state_helpers import latest_user_message, merge_agent_judgment
 
@@ -43,15 +44,9 @@ def text_analyzer_node(
     latest_text = latest_user_message(state)
     multimodal = state.get("multimodal_features", {})
 
-    system_prompt = (
-        "你是高校心理风险识别系统中的文本分析节点。"
-        "请从用户文本中提取 emotion_keywords、sentiment、observations，"
-        "仅返回 JSON。"
-    )
-    user_prompt = (
-        f"用户文本：{latest_text}\n"
-        f"多模态特征概览：{multimodal}\n"
-        "返回字段：emotion_keywords(list[str])、sentiment(str)、observations(list[str])。"
+    system_prompt, user_prompt = build_text_analyzer_prompts(
+        latest_text,
+        multimodal,
     )
     llm_result = llm.complete_json(system_prompt, user_prompt)
 

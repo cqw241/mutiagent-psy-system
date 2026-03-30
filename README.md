@@ -57,8 +57,9 @@ flowchart LR
 
 ### 5. 健壮的工程设施
 - 所有重复状态访问和组装提取到 `app/utils/state_helpers.py`（符合 DRY 原则）。
+- LLM 节点的系统提示词与 user prompt builder 已集中收敛到 `app/prompts/`，当前主流程 4 个节点与兼容旧节点 `information_extractor` 统一复用，便于后续维护、审查与版本化。
 - 为高并发场景添加了 LangGraph 的安全并发写策略（自定义 `merge_dicts` reducer 解决 `agent_judgments` 写入竞争）。
-- **自动化测试保障**：104 个 pytest 自动化测试通过，覆盖路由器规则、各个独立 Node 回退链路、emotion2vec service 降级路径、WebSocket trace 暴露、物理/MFCC 音频特征提取及整个 Graph 整合运行。
+- **自动化测试保障**：109 个 pytest 自动化测试通过，覆盖路由器规则、各个独立 Node 回退链路、集中 prompt 管理、emotion2vec service 降级路径、WebSocket trace 暴露、物理/MFCC 音频特征提取及整个 Graph 整合运行。
 
 ---
 
@@ -71,6 +72,7 @@ app/
   graph/                   # LangGraph 定义：state.py, routers.py, workflow.py
   models/                  # 接口输入输出 Schema
   nodes/                   # 8大独立 Agent 节点定义
+  prompts/                 # LLM 节点提示词常量与 user prompt builder
   rag/                     # 检索增强逻辑
   services/                # 服务层：LLM, 告警, ASR, 声学特征(acoustic_feature_service)
   utils/                   # 共享状态修改函数与工具
@@ -138,7 +140,7 @@ npm run dev -- --host 0.0.0.0
 conda activate llm_env
 conda run -n llm_env python -m pytest -q --tb=short
 ```
-> 当前主测试集为 104 个 pytest 用例，新增覆盖 emotion2vec service、配置读取、节点级降级、WebSocket trace 暴露与最小图契约。
+> 当前主测试集为 109 个 pytest 用例，新增覆盖集中 prompt 管理、emotion2vec service、配置读取、节点级降级、WebSocket trace 暴露与最小图契约。
 
 ---
 
