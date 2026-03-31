@@ -59,15 +59,18 @@ def build_risk_assessor_prompts(
     acoustic_observations: list[str],
     acoustic_support_level: str,
     reference_context: str,
+    facial_observations: list[str] | None = None,
 ) -> tuple[str, str]:
     system_prompt = RISK_ASSESSOR_SYSTEM_PROMPT_TEMPLATE.format(
         reference_context=reference_context or "无检索结果"
     )
+    facial_block = "、".join(facial_observations) if facial_observations else "无"
     user_prompt = (
         f"用户文本：{latest_text}\n"
         f"提取线索：{keywords}\n"
         f"声学观察项：{acoustic_observations or '无'}\n"
         f"声学支持强度：{acoustic_support_level}\n"
+        f"面部观察项（仅作上下文校准）：{facial_block}\n"
         f"参考上下文是否存在：{'是' if reference_context else '否'}"
     )
     return system_prompt, user_prompt

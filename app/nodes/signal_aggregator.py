@@ -32,7 +32,9 @@ def signal_aggregator_node(state: dict[str, Any]) -> dict[str, Any]:
         "acoustic_observations": voice_signals.get("acoustic_observations", []),
         # 面部信号（辅助）
         "facial_observations": face_signals.get("facial_observations", []),
-        "facial_emotion": face_signals.get("facial_emotion", "unknown"),
+        "dominant_blend": face_signals.get("dominant_blend", "unknown"),
+        "dominant_confidence": face_signals.get("dominant_confidence", 0.0),
+        "au_summary": face_signals.get("au_summary", {}),
     }
 
     # 记录聚合元信息

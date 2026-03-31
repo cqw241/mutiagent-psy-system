@@ -26,6 +26,7 @@ from app.services.asr_service import (
     FasterWhisperASRService,
     VoiceSegmentResult,
 )
+from app.models.face_segment import FaceSegment
 from app.services.emotion2vec_service import (
     build_emotion2vec_reading,
     get_emotion2vec_service,
@@ -104,6 +105,7 @@ async def _stream_graph_reply(
     user_profile: dict | None = None,
     multimodal_features: dict | None = None,
     voice_segments: list[dict] | None = None,
+    face_segments: list[dict] | None = None,
 ) -> None:
     if not await _send_json_if_open(
         websocket,
@@ -116,6 +118,7 @@ async def _stream_graph_reply(
         user_profile=user_profile,
         multimodal_features=multimodal_features,
         voice_segments=voice_segments,
+        face_segments=face_segments,
     )
     config = {"configurable": {"thread_id": session_id}}
 
@@ -273,18 +276,40 @@ def _flush_voice_segment(transcriber: object) -> VoiceSegmentResult | None:
     )
 
 
+def _parse_face_segments(raw_segments: list | None) -> list[dict]:
+    """校验并解析前端传来的 face_segments 列表。
+
+    每个元素通过 FaceSegment Pydantic 模型进行结构校验，
+    无效条目会被静默跳过以保证鲁棒性。
+    """
+    if not raw_segments:
+        return []
+    validated: list[dict] = []
+    for item in raw_segments:
+        try:
+            segment = FaceSegment.model_validate(item)
+            validated.append(segment.model_dump())
+        except Exception:
+            logger.debug("Skipping invalid face_segment payload: %s", item)
+    return validated
+
+
 @router.websocket("/ws/chat/{session_id}")
 async def websocket_chat(websocket: WebSocket, session_id: str) -> None:
     await websocket.accept()
     try:
         while True:
             payload = await websocket.receive_json()
+            face_segments = _parse_face_segments(
+                payload.get("face_segments")
+            )
             await _stream_graph_reply(
                 websocket=websocket,
                 session_id=session_id,
                 message=payload.get("message", ""),
                 user_profile=payload.get("user_profile", {}),
                 multimodal_features=payload.get("multimodal_features", {}),
+                face_segments=face_segments,
             )
     except WebSocketDisconnect:
         return
@@ -325,9 +350,10 @@ async def websocket_voice_chat(websocket: WebSocket, session_id: str) -> None:
             return
         return
 
-    voice_context = {
+    voice_context: dict = {
         "user_profile": {},
         "multimodal_features": {},
+        "face_segments": [],
     }
 
     try:
@@ -352,6 +378,8 @@ async def websocket_voice_chat(websocket: WebSocket, session_id: str) -> None:
                         _segment_to_event_payload(segment),
                     ):
                         return
+                    face_segs = list(voice_context["face_segments"])
+                    voice_context["face_segments"] = []
                     await _stream_graph_reply(
                         websocket=websocket,
                         session_id=session_id,
@@ -368,6 +396,7 @@ async def websocket_voice_chat(websocket: WebSocket, session_id: str) -> None:
                                 emotion2vec_reading=emotion2vec_reading,
                             )
                         ],
+                        face_segments=face_segs,
                     )
                 continue
 
@@ -376,6 +405,16 @@ async def websocket_voice_chat(websocket: WebSocket, session_id: str) -> None:
                 continue
 
             payload = json.loads(raw_text)
+
+            # 面部特征帧：前端 1–1.5s 滑动窗口聚合后推送
+            if payload.get("type") == "face_segment":
+                try:
+                    seg = FaceSegment.model_validate(payload.get("data", {}))
+                    voice_context["face_segments"].append(seg.model_dump())
+                except Exception:
+                    logger.debug("Skipping invalid face_segment in voice WS: %s", payload)
+                continue
+
             voice_context["user_profile"] = payload.get(
                 "user_profile", voice_context["user_profile"]
             )
@@ -392,6 +431,8 @@ async def websocket_voice_chat(websocket: WebSocket, session_id: str) -> None:
                         _segment_to_event_payload(segment),
                     ):
                         return
+                    face_segs = list(voice_context["face_segments"])
+                    voice_context["face_segments"] = []
                     await _stream_graph_reply(
                         websocket=websocket,
                         session_id=session_id,
@@ -408,6 +449,7 @@ async def websocket_voice_chat(websocket: WebSocket, session_id: str) -> None:
                                 emotion2vec_reading=emotion2vec_reading,
                             )
                         ],
+                        face_segments=face_segs,
                     )
     except WebSocketDisconnect:
         return

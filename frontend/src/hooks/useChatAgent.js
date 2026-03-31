@@ -157,6 +157,14 @@ export function useChatAgent() {
         multimodalFeatures: {},
     })
 
+    // Stable send function for face_segment frames over the voice WS
+    const voiceSendFn = useCallback((data) => {
+        const socket = voiceStream._socketRef?.current
+        if (socket && socket.readyState === WebSocket.OPEN) {
+            socket.send(data)
+        }
+    }, [voiceStream._socketRef])
+
     useEffect(() => {
         if (!voiceStream.lastError) {
             return
@@ -235,6 +243,7 @@ export function useChatAgent() {
         handleSubmit,
         handleVoiceToggle,
         voiceStream,
+        voiceSendFn,
         finalizePendingAssistantReply,
     }
 }

@@ -11,7 +11,9 @@ def build_trace_payload(state: dict[str, Any]) -> dict[str, Any]:
     multimodal_features = state.get("multimodal_features", {})
     risk_judgment = agent_judgments.get("risk_assessor", {})
     voice_judgment = agent_judgments.get("voice_analyzer", {})
+    face_judgment = agent_judgments.get("face_analyzer", {})
     emotion2vec_reading = state.get("voice_signals", {}).get("emotion2vec_reading", {})
+    face_signals = state.get("face_signals", {})
 
     latest_voice_segment = multimodal_features.get("latest_voice_segment")
     acoustic_observations = extracted_signals.get("acoustic_observations", [])
@@ -45,6 +47,22 @@ def build_trace_payload(state: dict[str, Any]) -> dict[str, Any]:
             "confidence": emotion2vec_reading.get("confidence"),
             "model_dir": emotion2vec_reading.get("model_dir"),
             "error": emotion2vec_reading.get("error"),
+        },
+        "face_analysis": {
+            "facial_observations": face_signals.get("facial_observations", []),
+            "dominant_blend": face_signals.get(
+                "dominant_blend",
+                face_judgment.get("dominant_blend", "unknown"),
+            ),
+            "dominant_confidence": face_signals.get(
+                "dominant_confidence",
+                face_judgment.get("dominant_confidence", 0.0),
+            ),
+            "segment_count": face_signals.get(
+                "segment_count",
+                face_judgment.get("segment_count", 0),
+            ),
+            "feature_source": face_judgment.get("feature_source", "none"),
         },
         "risk_calibration": {
             "base_score": base_score,

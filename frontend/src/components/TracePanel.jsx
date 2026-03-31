@@ -17,6 +17,8 @@ function TraceDebugPanel({ trace, open, onToggle }) {
     const observations = trace.acoustic_observations ?? []
     const calibration = trace.risk_calibration ?? {}
     const emotion2vec = trace.emotion2vec ?? {}
+    const faceAnalysis = trace.face_analysis ?? {}
+    const facialObservations = faceAnalysis.facial_observations ?? []
 
     return (
         <div className="mt-5 rounded-[28px] border border-white/40 bg-[linear-gradient(145deg,#fbf5ec_0%,#eef2ec_100%)] p-5 shadow-sm transition-all hover:shadow-md">
@@ -102,6 +104,40 @@ function TraceDebugPanel({ trace, open, onToggle }) {
                                     )}
                                 </div>
                             </div>
+
+                            {/* ── 面部观察线索 ── */}
+                            <div className="rounded-2xl bg-white/75 px-4 py-3 shadow-inner">
+                                <p className="mb-2 text-stone-400">面部观察线索:</p>
+                                <div className="flex flex-wrap gap-2">
+                                    {facialObservations.length > 0 ? (
+                                        facialObservations.map((item) => (
+                                            <span key={item} className="rounded-full border border-[#d6c8e2] bg-[#f8f4fc] px-3 py-1 text-xs text-purple-700">
+                                                {item}
+                                            </span>
+                                        ))
+                                    ) : (
+                                        <span className="text-stone-400 italic">未收到面部特征数据</span>
+                                    )}
+                                </div>
+                                {faceAnalysis.dominant_blend && faceAnalysis.dominant_blend !== 'unknown' && (
+                                    <div className="mt-3 space-y-1">
+                                        <p className="flex justify-between">
+                                            <span className="text-stone-400">主导表情:</span>
+                                            <span className="font-mono text-purple-700">{faceAnalysis.dominant_blend}</span>
+                                        </p>
+                                        <p className="flex justify-between">
+                                            <span className="text-stone-400">置信度:</span>
+                                            <span className="font-mono">
+                                                {typeof faceAnalysis.dominant_confidence === 'number' ? faceAnalysis.dominant_confidence.toFixed(4) : 'N/A'}
+                                            </span>
+                                        </p>
+                                        <p className="flex justify-between">
+                                            <span className="text-stone-400">面部片段数:</span>
+                                            <span className="font-mono">{faceAnalysis.segment_count ?? 0}</span>
+                                        </p>
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     </motion.div>
                 )}
@@ -126,6 +162,10 @@ export default function TracePanel({ sessionId, latestTrace, isTraceOpen, setIsT
                     <li className="flex items-start gap-2">
                         <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[#8ca49b]"></span>
                         <span>语音链路使用独立 WebSocket，浏览器端 16kHz PCM 将直接送入后端 ASR 分析与特征提取。</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                        <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[#8ca49b]"></span>
+                        <span>面部特征仅在浏览器本地提取（Edge AI），不传输任何视频画面，每 1.25 秒聚合一次推送至后端。</span>
                     </li>
                     <li className="flex items-start gap-2">
                         <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[#8ca49b]"></span>

@@ -1,9 +1,11 @@
 import { useState } from 'react'
 
 import { useChatAgent } from './hooks/useChatAgent'
+import { useFaceAnalysis } from './hooks/useFaceAnalysis'
 import ChatHeader from './components/ChatHeader'
 import StageIndicator from './components/StageIndicator'
 import VoicePanel from './components/VoicePanel'
+import FaceToggle from './components/FaceToggle'
 import MessageList from './components/MessageList'
 import InputCabin from './components/InputCabin'
 import TracePanel from './components/TracePanel'
@@ -20,8 +22,13 @@ export default function ChatInterface() {
     handleSubmit,
     handleVoiceToggle,
     voiceStream,
+    voiceSendFn,
     finalizePendingAssistantReply,
   } = useChatAgent()
+
+  const faceAnalysis = useFaceAnalysis({
+    sendFn: voiceSendFn,
+  })
 
   const [isTraceOpen, setIsTraceOpen] = useState(false)
 
@@ -38,6 +45,8 @@ export default function ChatInterface() {
               voiceStream={voiceStream}
               handleVoiceToggle={handleVoiceToggle}
             />
+
+            <FaceToggle faceAnalysis={faceAnalysis} />
 
             <MessageList
               messages={messages}
@@ -62,4 +71,3 @@ export default function ChatInterface() {
     </div>
   )
 }
-

@@ -30,7 +30,7 @@ class PsychologyGraphState(TypedDict, total=False):
 
     字段分组：
     - 会话上下文：session_id, trace_id, user_profile, chat_history
-    - 多模态原始输入：multimodal_features, voice_segments
+    - 多模态原始输入：multimodal_features, voice_segments, face_segments
     - 模态路由标志：has_voice, has_face
     - Analyzer 独立输出槽：text_signals, voice_signals, face_signals
     - 聚合信号：extracted_signals（由 signal_aggregator fan-in 生成）
@@ -49,6 +49,7 @@ class PsychologyGraphState(TypedDict, total=False):
     # ── 多模态原始输入 ──
     multimodal_features: dict[str, Any]
     voice_segments: Annotated[list[dict[str, Any]], add]
+    face_segments: Annotated[list[dict[str, Any]], add]
 
     # ── 模态路由标志（用于 conditional edge） ──
     has_voice: bool

@@ -38,12 +38,14 @@ def build_initial_state(
     user_profile: dict | None = None,
     multimodal_features: dict | None = None,
     voice_segments: list[dict] | None = None,
+    face_segments: list[dict] | None = None,
     trace_id: str | None = None,
 ) -> dict[str, Any]:
     """构建 LangGraph 初始 state，REST 与 WebSocket 共用。"""
 
     mm_features = multimodal_features or {}
-    segments = voice_segments or []
+    v_segments = voice_segments or []
+    f_segments = face_segments or []
 
     return {
         "session_id": session_id,
@@ -51,9 +53,10 @@ def build_initial_state(
         "user_profile": user_profile or {},
         "chat_history": [{"role": "user", "content": message}],
         "multimodal_features": mm_features,
-        "voice_segments": segments,
-        "has_voice": bool(segments),
-        "has_face": bool(mm_features.get("facial_data")),
+        "voice_segments": v_segments,
+        "face_segments": f_segments,
+        "has_voice": bool(v_segments),
+        "has_face": bool(f_segments) or bool(mm_features.get("facial_data")),
         "trace": {},
         "current_risk_score": 0.0,
         "extracted_signals": {},

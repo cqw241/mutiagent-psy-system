@@ -49,17 +49,23 @@ flowchart LR
 - RAGFlow 外部相似案例库检索支持（挂载于 `rag_retriever` 独立节点）。
 - 高风险评估时可结合历史相似案例提升判断合理性，外部依赖失败时支持平滑降级。
 
-### 4. 实时交互、闭环及告警
+### 4. 端侧面部表情提取 (Edge AI Face Analysis)
+- **纯本地推理**: 依托 `@mediapipe/tasks-vision` 在浏览器前端实现完全本地化处理。
+- **隐私保护契约**: 原始视频画面绝不离开客户端，仅提取结构化的 FACS (Facial Action Coding System) AU 数据与复合情绪得分，通过独立的 WebSocket 定期同步后端。
+- **1.25秒滑动窗口平滑**: 引入特征流滑动降噪（Average Pooling），控制网络压力并消除视频帧级别的高频抖动。
+- **非诊断与辅助校准**: 提取的面部观察结果（如“用户持续皱眉”或“微弱微笑”）在输入 `risk_assessor` 节点时会被强制作为 *上下文轻度辅助校准（Contextual Calibration）* 处理，系统禁止单凭面部特征直接引发高危跳变。
+
+### 5. 实时交互、闭环及告警
 - 支持 RESTful (`/chat`) 及 WebSocket 流式接口 (`/ws/chat/{session_id}`, `/ws/voice-chat/{session_id}`)。
 - 高风险会话不再通过冰冷模板提示，改为 `referral_agent` 输出极具同理心的温暖过渡语，并组装热线求助卡片。
 - 对辅导员/后台的异步 Webhook 高风险脱敏告警。
 - 发送给前端的 `trace` 包含解释性字段、校准基数、各 Agent 的内部判断，以及 emotion2vec 的显式状态摘要。
 
-### 5. 健壮的工程设施
+### 6. 健壮的工程设施
 - 所有重复状态访问和组装提取到 `app/utils/state_helpers.py`（符合 DRY 原则）。
 - LLM 节点的系统提示词与 user prompt builder 已集中收敛到 `app/prompts/`，当前主流程 4 个节点与兼容旧节点 `information_extractor` 统一复用，便于后续维护、审查与版本化。
 - 为高并发场景添加了 LangGraph 的安全并发写策略（自定义 `merge_dicts` reducer 解决 `agent_judgments` 写入竞争）。
-- **自动化测试保障**：109 个 pytest 自动化测试通过，覆盖路由器规则、各个独立 Node 回退链路、集中 prompt 管理、emotion2vec service 降级路径、WebSocket trace 暴露、物理/MFCC 音频特征提取及整个 Graph 整合运行。
+- **自动化测试保障**：114 个 pytest 自动化测试通过，覆盖路由器规则、各个独立 Node 回退链路、集中 prompt 管理、emotion2vec service 降级路径、WebSocket trace 暴露、物理/MFCC 音频特征提取、FACS 面部置信度聚合处理以及整个 Graph 整合运行。
 
 ---
 
@@ -140,7 +146,7 @@ npm run dev -- --host 0.0.0.0
 conda activate llm_env
 conda run -n llm_env python -m pytest -q --tb=short
 ```
-> 当前主测试集为 109 个 pytest 用例，新增覆盖集中 prompt 管理、emotion2vec service、配置读取、节点级降级、WebSocket trace 暴露与最小图契约。
+> 当前主测试集为 114 个 pytest 用例，新增覆盖集中 prompt 管理、emotion2vec service、纯本地端侧 MediaPipe 防抖特征集成、配置读取、节点级降级、WebSocket trace 暴露与最小图契约。
 
 ---
 

@@ -132,12 +132,16 @@ def risk_assessor_node(
             "agent_judgments": merge_agent_judgment(state, "risk_assessor", judgment),
         }
 
+    facial_observations = state.get("extracted_signals", {}).get(
+        "facial_observations", []
+    )
     system_prompt, user_prompt = build_risk_assessor_prompts(
         latest_text=latest_text,
         keywords=keywords,
         acoustic_observations=acoustic_observations,
         acoustic_support_level=acoustic_support_level,
         reference_context=reference_context,
+        facial_observations=facial_observations,
     )
     llm_result = llm.complete_json(system_prompt, user_prompt)
 

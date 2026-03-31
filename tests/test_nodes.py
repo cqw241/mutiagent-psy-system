@@ -549,22 +549,27 @@ def test_voice_analyzer_marks_emotion2vec_unavailable_without_raw_audio(monkeypa
 
 
 def test_face_analyzer_extracts_emotion_from_facial_data():
+    """Legacy pathway: multimodal_features.facial_data.emotion → observation."""
     state = {
         "multimodal_features": {
             "facial_data": {"emotion": "sad"},
         },
+        "face_segments": [],
         "agent_judgments": {},
     }
     updated = face_analyzer_node(state)
     assert "facial_expression_sad" in updated["face_signals"]["facial_observations"]
-    assert updated["face_signals"]["facial_emotion"] == "sad"
+    assert updated["face_signals"]["dominant_blend"] == "sad"
+    assert updated["agent_judgments"]["face_analyzer"]["feature_source"] == "legacy_multimodal"
 
 
 def test_face_analyzer_extracts_from_legacy_facial_emotion():
+    """Legacy pathway: multimodal_features.facial_emotion → observation."""
     state = {
         "multimodal_features": {
             "facial_emotion": "angry",
         },
+        "face_segments": [],
         "agent_judgments": {},
     }
     updated = face_analyzer_node(state)
@@ -572,13 +577,116 @@ def test_face_analyzer_extracts_from_legacy_facial_emotion():
 
 
 def test_face_analyzer_handles_missing_data():
+    """No face data at all → empty observations, graceful defaults."""
     state = {
         "multimodal_features": {},
+        "face_segments": [],
         "agent_judgments": {},
     }
     updated = face_analyzer_node(state)
     assert updated["face_signals"]["facial_observations"] == []
-    assert updated["face_signals"]["facial_emotion"] == "unknown"
+    assert updated["face_signals"]["dominant_blend"] == "unknown"
+    assert updated["agent_judgments"]["face_analyzer"]["feature_source"] == "none"
+
+
+def test_face_analyzer_maps_high_au04_to_frown_observation():
+    """AU04 > 0.6 should produce '用户持续皱眉（眉部紧缩）'."""
+    state = {
+        "multimodal_features": {},
+        "face_segments": [
+            {
+                "timestamp_ms": 1000,
+                "action_units": {"AU04": 0.8},
+                "blend_scores": {},
+            }
+        ],
+        "agent_judgments": {},
+    }
+    updated = face_analyzer_node(state)
+    obs = updated["face_signals"]["facial_observations"]
+    assert any("皱眉" in o for o in obs)
+    assert updated["agent_judgments"]["face_analyzer"]["feature_source"] == "face_segments"
+
+
+def test_face_analyzer_ignores_low_au_values():
+    """AU values below threshold should NOT trigger observations."""
+    state = {
+        "multimodal_features": {},
+        "face_segments": [
+            {
+                "timestamp_ms": 2000,
+                "action_units": {"AU04": 0.2, "AU15": 0.1, "AU01": 0.3},
+                "blend_scores": {},
+            }
+        ],
+        "agent_judgments": {},
+    }
+    updated = face_analyzer_node(state)
+    assert updated["face_signals"]["facial_observations"] == []
+
+
+def test_face_analyzer_applies_compound_rules():
+    """AU06 + AU12 both > 0.5 should produce '面部呈现微笑'."""
+    state = {
+        "multimodal_features": {},
+        "face_segments": [
+            {
+                "timestamp_ms": 3000,
+                "action_units": {"AU06": 0.7, "AU12": 0.8},
+                "blend_scores": {"happy": 0.85, "neutral": 0.15},
+            }
+        ],
+        "agent_judgments": {},
+    }
+    updated = face_analyzer_node(state)
+    obs = updated["face_signals"]["facial_observations"]
+    assert any("微笑" in o for o in obs)
+    assert updated["face_signals"]["dominant_blend"] == "happy"
+    assert updated["face_signals"]["dominant_confidence"] == 0.85
+
+
+def test_face_analyzer_extracts_dominant_blend():
+    """blend_scores present → dominant emotion extracted with confidence."""
+    state = {
+        "multimodal_features": {},
+        "face_segments": [
+            {
+                "timestamp_ms": 4000,
+                "action_units": {},
+                "blend_scores": {"sad": 0.67, "happy": 0.12, "neutral": 0.21},
+            }
+        ],
+        "agent_judgments": {},
+    }
+    updated = face_analyzer_node(state)
+    assert updated["face_signals"]["dominant_blend"] == "sad"
+    assert updated["face_signals"]["dominant_confidence"] == 0.67
+
+
+def test_face_analyzer_uses_latest_segment():
+    """When multiple segments exist, only the latest (last) is analyzed."""
+    state = {
+        "multimodal_features": {},
+        "face_segments": [
+            {
+                "timestamp_ms": 1000,
+                "action_units": {"AU04": 0.9},
+                "blend_scores": {},
+            },
+            {
+                "timestamp_ms": 2000,
+                "action_units": {"AU12": 0.8},
+                "blend_scores": {"happy": 0.9},
+            },
+        ],
+        "agent_judgments": {},
+    }
+    updated = face_analyzer_node(state)
+    obs = updated["face_signals"]["facial_observations"]
+    # Latest segment has AU12 (嘴角上扬) not AU04 (皱眉)
+    assert any("嘴角上扬" in o for o in obs)
+    assert not any("皱眉" in o for o in obs)
+    assert updated["face_signals"]["segment_count"] == 2
 
 
 # ── Signal Aggregator Tests ──
@@ -596,7 +704,9 @@ def test_signal_aggregator_merges_all_sources():
         },
         "face_signals": {
             "facial_observations": ["facial_expression_sad"],
-            "facial_emotion": "sad",
+            "dominant_blend": "sad",
+            "dominant_confidence": 0.67,
+            "au_summary": {},
         },
         "agent_judgments": {},
     }

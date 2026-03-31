@@ -333,6 +333,7 @@ export function useAudioStream({
   }
 
   return {
+    _socketRef: socketRef,
     audioLevel,
     connectionState,
     isRecording,
