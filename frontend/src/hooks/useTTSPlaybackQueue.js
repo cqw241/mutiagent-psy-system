@@ -1,4 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import {
+  createTTSSegmentCollector,
+  createUnlockedAudioPlayer,
+} from './useTTSPlaybackQueue.helpers'
 
 function decodeBase64Chunk(payload) {
   const binary = window.atob(payload)
@@ -10,34 +14,55 @@ function decodeBase64Chunk(payload) {
 }
 
 export function useTTSPlaybackQueue({ enabled = false } = {}) {
-  const pendingSegmentsRef = useRef(new Map())
   const playbackQueueRef = useRef([])
-  const currentAudioRef = useRef(null)
   const isPlayingRef = useRef(false)
+  const playerRef = useRef(null)
+  const collectorRef = useRef(null)
 
   const [isPlaying, setIsPlaying] = useState(false)
   const [playbackError, setPlaybackError] = useState('')
 
-  const resetPlayback = useCallback(() => {
-    playbackQueueRef.current.forEach((entry) => {
-      URL.revokeObjectURL(entry.url)
-    })
-    playbackQueueRef.current = []
-    pendingSegmentsRef.current.clear()
-
-    const currentAudio = currentAudioRef.current
-    if (currentAudio) {
-      currentAudio.pause()
-      URL.revokeObjectURL(currentAudio.src)
-      currentAudioRef.current = null
+  function getPlayer() {
+    if (!playerRef.current) {
+      playerRef.current = createUnlockedAudioPlayer()
     }
+    return playerRef.current
+  }
+
+  function enqueueCompletedSegment(segment) {
+    const byteChunks = segment.chunks.map((item) => decodeBase64Chunk(item))
+    playbackQueueRef.current.push({
+      sequence: segment.sequence,
+      byteChunks,
+      mimeType: segment.mimeType,
+      outputFormat: segment.outputFormat,
+    })
+    playbackQueueRef.current.sort((left, right) => left.sequence - right.sequence)
+    void playNextRef.current?.()
+  }
+
+  function getCollector() {
+    if (!collectorRef.current) {
+      collectorRef.current = createTTSSegmentCollector({
+        onSegmentReady: enqueueCompletedSegment,
+      })
+    }
+    return collectorRef.current
+  }
+
+  const playNextRef = useRef(null)
+
+  const resetPlayback = useCallback(() => {
+    playbackQueueRef.current = []
+    getCollector().reset()
+    getPlayer().reset()
 
     isPlayingRef.current = false
     setIsPlaying(false)
     setPlaybackError('')
   }, [])
 
-  const playNext = useCallback(() => {
+  const playNext = useCallback(async () => {
     if (!enabled || isPlayingRef.current) {
       return
     }
@@ -49,36 +74,38 @@ export function useTTSPlaybackQueue({ enabled = false } = {}) {
       return
     }
 
-    const audio = new Audio(nextEntry.url)
-    currentAudioRef.current = audio
     isPlayingRef.current = true
     setIsPlaying(true)
 
     const finalizePlayback = () => {
-      URL.revokeObjectURL(nextEntry.url)
-      if (currentAudioRef.current === audio) {
-        currentAudioRef.current = null
-      }
       isPlayingRef.current = false
       setIsPlaying(false)
-      playNext()
+      void playNext()
     }
 
-    audio.addEventListener('ended', finalizePlayback, { once: true })
-    audio.addEventListener(
-      'error',
-      () => {
-        setPlaybackError('语音播放出现波动，后续语音将继续尝试。')
-        finalizePlayback()
+    await getPlayer().play({
+      byteChunks: nextEntry.byteChunks,
+      mimeType: nextEntry.mimeType,
+      outputFormat: nextEntry.outputFormat,
+      onEnded: finalizePlayback,
+      onError: () => {
+        setPlaybackError('浏览器或设备拦截了语音播放，请再点一次麦克风后重试。')
       },
-      { once: true },
-    )
-
-    audio.play().catch(() => {
-      setPlaybackError('浏览器拦截了自动播放，请再次点击进入视频通话后重试。')
+    }).catch(() => {
+      setPlaybackError('语音播放出现波动，后续语音将继续尝试。')
       finalizePlayback()
     })
   }, [enabled])
+  playNextRef.current = playNext
+
+  const primePlayback = useCallback(async () => {
+    setPlaybackError('')
+    try {
+      await getPlayer().prime()
+    } catch {
+      setPlaybackError('当前浏览器尚未允许语音播放，请再点一次麦克风后重试。')
+    }
+  }, [])
 
   const handleTTSEvent = useCallback(
     (payload) => {
@@ -86,50 +113,12 @@ export function useTTSPlaybackQueue({ enabled = false } = {}) {
         return
       }
 
-      if (payload.type === 'tts_audio') {
-        const segmentId = payload.segment_id
-        if (!segmentId || !payload.payload) {
-          return
-        }
-
-        const existing = pendingSegmentsRef.current.get(segmentId) ?? {
-          mimeType: payload.mime_type ?? 'audio/mpeg',
-          chunks: [],
-          sequence: payload.sequence ?? Number.MAX_SAFE_INTEGER,
-        }
-
-        existing.chunks.push(payload.payload)
-        pendingSegmentsRef.current.set(segmentId, existing)
+      if (payload.type !== 'tts_audio' && payload.type !== 'tts_end') {
         return
       }
-
-      if (payload.type !== 'tts_end') {
-        return
-      }
-
-      const segmentId = payload.segment_id
-      if (!segmentId) {
-        return
-      }
-
-      const completed = pendingSegmentsRef.current.get(segmentId)
-      pendingSegmentsRef.current.delete(segmentId)
-      if (!completed || !completed.chunks.length) {
-        return
-      }
-
-      const byteChunks = completed.chunks.map((item) => decodeBase64Chunk(item))
-      const blob = new Blob(byteChunks, { type: completed.mimeType })
-      const url = URL.createObjectURL(blob)
-
-      playbackQueueRef.current.push({
-        sequence: completed.sequence,
-        url,
-      })
-      playbackQueueRef.current.sort((left, right) => left.sequence - right.sequence)
-      playNext()
+      getCollector().handle(payload)
     },
-    [enabled, playNext],
+    [enabled],
   )
 
   useEffect(() => {
@@ -138,12 +127,18 @@ export function useTTSPlaybackQueue({ enabled = false } = {}) {
     }
   }, [enabled, resetPlayback])
 
-  useEffect(() => resetPlayback, [resetPlayback])
+  useEffect(() => {
+    return () => {
+      resetPlayback()
+      void getPlayer().dispose()
+    }
+  }, [resetPlayback])
 
   return {
     handleTTSEvent,
     isPlaying,
     playbackError,
+    primePlayback,
     resetPlayback,
   }
 }

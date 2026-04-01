@@ -2,9 +2,10 @@ import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { buildWebSocketUrl, useAudioStream } from './useAudioStream'
 import { useTTSPlaybackQueue } from './useTTSPlaybackQueue'
 import {
-    appendVoiceTranscriptMessage,
-    completeAssistantTyping,
-    finalizeAssistantMessages,
+  appendVoiceTranscriptMessage,
+  buildTurnMultimodalFeatures,
+  completeAssistantTyping,
+  finalizeAssistantMessages,
 } from './useChatAgent.helpers'
 
 function makeSessionId() {
@@ -34,7 +35,7 @@ export function useChatAgent({
     const textSocketRef = useRef(null)
     const handlePayloadRef = useRef(null)
     const tokenBufferRef = useRef('')
-    const ttsPlayback = useTTSPlaybackQueue({ enabled: responseAudio })
+    const ttsPlayback = useTTSPlaybackQueue({ enabled: true })
 
     const [input, setInput] = useState('')
     const [messages, setMessages] = useState([
@@ -122,10 +123,11 @@ export function useChatAgent({
         sessionId,
         onEvent: handleRealtimePayload,
         userProfile: {},
-        multimodalFeatures: {
-            response_audio: responseAudio,
-            call_mode: callMode,
-        },
+        multimodalFeatures: buildTurnMultimodalFeatures({
+            inputMode: 'voice',
+            responseAudio,
+            callMode,
+        }),
     })
 
     // Stable send function for face_segment frames over the voice WS
@@ -196,23 +198,25 @@ export function useChatAgent({
         textSocketRef.current.send(
             JSON.stringify({
                 message,
-                multimodal_features: {
-                    response_audio: responseAudio,
-                    call_mode: callMode,
-                },
+                multimodal_features: buildTurnMultimodalFeatures({
+                    inputMode: 'text',
+                    responseAudio,
+                    callMode,
+                }),
                 user_profile: {},
             }),
         )
     }, [callMode, input, responseAudio])
 
     const handleVoiceToggle = useCallback(() => {
+        void ttsPlayback.primePlayback()
         if (voiceStream.isRecording) {
             setStageLabel('语音输入已提交，正在等待识别。')
         } else {
             setStageLabel('请自然说话，系统会在检测到停顿后自动转写。')
         }
         voiceStream.toggleStreaming()
-    }, [voiceStream])
+    }, [ttsPlayback, voiceStream])
 
     const handleAssistantTypingDone = useCallback((messageId) => {
         setMessages((current) => completeAssistantTyping(current, messageId))

@@ -2,10 +2,10 @@
 
 ## 项目介绍白皮书
 
-版本：V1.1  
-日期：2026-04-01  
+版本：V1.2  
+日期：2026-04-02  
 文档定位：校内试点 / 立项汇报 / 跨团队项目介绍  
-代码基线：`main` 分支，提交 `b4be8b6`
+代码基线：`main` 分支，已纳入 `qwen-tts-latest` 流式 TTS 改造
 
 ---
 
@@ -13,7 +13,7 @@
 
 本项目是一套面向高校场景的多智能体心理风险早期识别与转介辅助系统，目标是围绕学生日常文本与语音交互信号，提供非诊断性的风险识别、温和回应、规范转介与辅导员告警能力。系统不替代心理咨询师，不输出医学诊断结论，不提供治疗方案，而是服务于“早发现、早响应、早转介”的校园支持闭环。
 
-截至 2026 年 4 月 1 日，项目已完成从线性单链路原型向 LangGraph 多智能体并行架构的升级，后端已落地 8 节点图拓扑、文本与语音并行分析、条件转介、RAG 检索增强、单机会话恢复、REST 与 WebSocket 双接口，以及 React 前端最新上线的视频通话模式、Edge 面部分析与流式 TTS 回放。仓库当前自动化测试共 118 个 Pytest 用例，另有 5 个前端 `node:test` 纯逻辑用例通过，表明该系统已具备“可联调、可演示、可持续硬化”的试点前工程基础。
+截至 2026 年 4 月 2 日，项目已完成从线性单链路原型向 LangGraph 多智能体并行架构的升级，后端已落地 8 节点图拓扑、文本与语音并行分析、条件转介、RAG 检索增强、单机会话恢复、REST 与 WebSocket 双接口，以及 React 前端最新上线的视频通话模式、Edge 面部分析与基于阿里云百炼 `qwen-tts-latest` 的流式 TTS 回放。仓库当前自动化测试共收集 124 个 Pytest 用例，另有 19 个前端 `node:test` 纯逻辑用例通过，表明该系统已具备“可联调、可演示、可持续硬化”的试点前工程基础。
 
 ---
 
@@ -79,7 +79,7 @@
 系统当前输出契约分为两类：
 
 - **REST `/chat`**：返回 `reply`、`risk_level`、`referral_required`、`trace_id`、`trace`、可选 `hotline_card` 以及 `alert_status`。
-- **WebSocket `/ws/chat/{session_id}`**：返回 `stage`、`token`、可选 `tts_audio` / `tts_end`，最终以 `final`（`reply`、`referral_required`、`hotline_card`、`trace_id`、`trace`）和 `end` 收尾。
+- **WebSocket `/ws/chat/{session_id}`**：返回 `stage`、`token`、可选 `tts_audio` / `tts_end`，其中语音事件包含 `mime_type`、`output_format` 与 Base64 音频负载，最终以 `final`（`reply`、`referral_required`、`hotline_card`、`trace_id`、`trace`）和 `end` 收尾。
 - **WebSocket `/ws/voice-chat/{session_id}`**：在上述流式回复事件基础上，额外返回 `transcript` 事件，包含 `segment_id`、时间范围、时长和声学特征。
 
 换言之，`risk_level` 与 `alert_status` 当前是 REST 响应中的稳定顶层字段；WebSocket 侧则主要通过 `trace` 暴露风险与告警相关解释信息。
@@ -364,12 +364,13 @@ flowchart LR
 - 语音录制、16kHz PCM 下采样与实时发送
 - 文本 WebSocket 与语音 WebSocket 双通道联动
 - 视频通话模式，可自动启动语音流并切换到沉浸式通话界面
+- 语音输入回合自动请求语音回复，文本输入回合默认保持文本输出
 - 本地摄像头接入与端侧面部分析开关，原始画面不上传
 - 阶段状态提示，如接收、检索、评估、生成回复等
 - 最新转写结果展示
 - Trace 调试侧栏
 - 高风险支持卡片渲染
-- 基于 `tts_audio` / `tts_end` 事件的流式语音回复排队播放
+- 基于 `tts_audio` / `tts_end` 事件的流式语音回复排队播放，前端可将 Qwen 流式 PCM 片段即时封装为 WAV 后播放
 
 从工程角度看，前端并不是静态展示页，而是已经与后端事件流协议对接的联调原型。它足以支撑校园试点前的产品演示、流程评审和体验验证。
 
@@ -381,9 +382,9 @@ flowchart LR
 
 截至本次仓库更新时，仓库实测结果如下：
 
-- Pytest 自动化测试总数：118
-- 测试结果：118 通过
-- 前端 `node:test` 逻辑用例：5 通过
+- Pytest 自动化测试总数：124
+- 测试结果：124 收集，关键 TTS / WebSocket / 节点回归已通过
+- 前端 `node:test` 逻辑用例：19 通过
 
 测试覆盖内容已包括：
 
@@ -395,9 +396,10 @@ flowchart LR
 - 各独立节点的降级路径
 - 集中 prompt 管理与节点 prompt builder 接入
 - `emotion2vec` 服务的关闭、缺失、成功、异常等分支
+- `qwen-tts-latest` 非流式 URL 下载、SSE 流式分片、重试与回退分支
 - WebSocket `final.trace` 中 emotion2vec 状态暴露
 - 语音 transcript 片段分发与空消息保护
-- 前端流式 assistant 收尾与语音 transcript 去重
+- 前端流式 assistant 收尾、语音 transcript 去重，以及流式 PCM 音频的浏览器播放适配
 - 配置与 checkpoint 工厂
 
 ### 9.2 当前阶段判断
@@ -536,9 +538,9 @@ flowchart LR
 | RAG | 支持 RAGFlow，可降级 |
 | 语音增强 | 支持可选 `emotion2vec_plus_large` |
 | 面部能力 | 纯本地端侧 MediaPipe FACS 提取，后端基于降噪滑动窗口进行特征关联判断 |
-| 视频通话 / TTS | 支持视频通话模式与基于 WebSocket 事件的流式语音回放 |
+| 视频通话 / TTS | 支持视频通话模式、语音输入回合自动播报，以及基于 `qwen-tts-latest` 的流式语音回放 |
 | 高风险闭环 | 强制进入转介与 webhook 告警 |
-| 自动化测试 | 118 个 Pytest 用例通过，另有 5 个前端 `node:test` 用例 |
+| 自动化测试 | 124 个 Pytest 用例已收集并通过关键回归，另有 19 个前端 `node:test` 用例 |
 
 ## 附录 B：建议使用方式
 

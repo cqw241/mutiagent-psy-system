@@ -18,6 +18,7 @@ load_dotenv()
 
 ALLOWED_APP_ENVS = {"development", "test", "staging", "production"}
 ALLOWED_CHECKPOINT_BACKENDS = {"memory", "file", "postgres", "redis"}
+ALLOWED_TTS_PROVIDERS = {"dashscope", "edge_tts"}
 
 
 def _env_bool(name: str, default: bool) -> bool:
@@ -75,6 +76,31 @@ class Settings:
     )
     llm_verbose: bool = field(default_factory=lambda: _env_bool("LITELLM_VERBOSE", False))
     tts_enabled: bool = field(default_factory=lambda: _env_bool("TTS_ENABLED", True))
+    tts_provider: str = field(
+        default_factory=lambda: _env_str("TTS_PROVIDER", "dashscope").lower()
+    )
+    tts_api_key: str = field(
+        default_factory=lambda: _env_str(
+            "TTS_API_KEY",
+            os.getenv("BAILIAN_API_KEY", os.getenv("LLM_API_KEY", "")),
+        )
+    )
+    tts_model: str = field(default_factory=lambda: _env_str("TTS_MODEL", "qwen-tts-latest"))
+    tts_base_url: str = field(
+        default_factory=lambda: _env_str("TTS_BASE_URL", "https://dashscope.aliyuncs.com/api/v1")
+    )
+    tts_timeout_seconds: int = field(
+        default_factory=lambda: _env_int("TTS_TIMEOUT_SECONDS", 60)
+    )
+    tts_qwen_voice: str = field(
+        default_factory=lambda: _env_str(
+            "TTS_QWEN_VOICE",
+            _env_str("TTS_VOICE", "Serena"),
+        )
+    )
+    tts_qwen_language_type: str = field(
+        default_factory=lambda: _env_str("TTS_QWEN_LANGUAGE_TYPE", "Chinese")
+    )
     tts_voice: str = field(
         default_factory=lambda: _env_str("TTS_VOICE", "zh-CN-XiaoxiaoNeural")
     )
@@ -153,6 +179,11 @@ class Settings:
         if self.checkpoint_backend == "redis" and not self.checkpoint_redis_url:
             raise ValueError(
                 "CHECKPOINT_REDIS_URL is required when CHECKPOINT_BACKEND=redis."
+            )
+
+        if self.tts_provider not in ALLOWED_TTS_PROVIDERS:
+            raise ValueError(
+                f"TTS_PROVIDER must be one of {sorted(ALLOWED_TTS_PROVIDERS)}, got {self.tts_provider!r}."
             )
 
         if self.emotion2vec_sample_rate <= 0:

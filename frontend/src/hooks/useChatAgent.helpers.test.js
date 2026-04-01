@@ -4,6 +4,7 @@ import test from 'node:test'
 import {
   appendAssistantStreamFrame,
   appendVoiceTranscriptMessage,
+  buildTurnMultimodalFeatures,
   completeAssistantTyping,
   finalizeAssistantMessages,
 } from './useChatAgent.helpers.js'
@@ -122,4 +123,32 @@ test('appendAssistantStreamFrame appends subsequent frames to the active assista
     text: '抱抱',
     streaming: true,
   })
+})
+
+test('buildTurnMultimodalFeatures forces response audio for voice-triggered turns', () => {
+  assert.deepEqual(
+    buildTurnMultimodalFeatures({
+      inputMode: 'voice',
+      responseAudio: false,
+      callMode: 'standard',
+    }),
+    {
+      response_audio: true,
+      call_mode: 'standard',
+    },
+  )
+})
+
+test('buildTurnMultimodalFeatures keeps text-triggered turns text-only by default', () => {
+  assert.deepEqual(
+    buildTurnMultimodalFeatures({
+      inputMode: 'text',
+      responseAudio: false,
+      callMode: 'standard',
+    }),
+    {
+      response_audio: false,
+      call_mode: 'standard',
+    },
+  )
 })

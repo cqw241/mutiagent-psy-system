@@ -1,5 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
-import { shouldSendVoiceCommit } from './useAudioStream.helpers'
+import {
+  buildVoiceControlPayload,
+  shouldSendVoiceCommit,
+} from './useAudioStream.helpers'
 
 const TARGET_SAMPLE_RATE = 16000
 
@@ -249,6 +252,18 @@ export function useAudioStream({
     try {
       transcriptReceivedRef.current = false
       const socket = await ensureSocketConnection()
+      const currentContext = payloadContextRef.current
+      if (socket.readyState === WebSocket.OPEN) {
+        socket.send(
+          JSON.stringify(
+            buildVoiceControlPayload({
+              userProfile: currentContext.userProfile,
+              multimodalFeatures: currentContext.multimodalFeatures,
+              sampleRate: TARGET_SAMPLE_RATE,
+            }),
+          ),
+        )
+      }
       const mediaStream = await navigator.mediaDevices.getUserMedia({
         audio: {
           channelCount: 1,
@@ -320,17 +335,15 @@ export function useAudioStream({
     })
 
     if (socket?.readyState === WebSocket.OPEN && shouldCommit) {
-      const { multimodalFeatures: currentFeatures, userProfile: currentProfile } = currentContext
       socket.send(
         JSON.stringify({
-          type: 'input_audio_buffer.commit',
-          multimodal_features: {
-            ...currentFeatures,
-            input_mode: 'voice',
-            sample_rate: TARGET_SAMPLE_RATE,
-          },
-          user_profile: currentProfile,
-        }),
+          ...buildVoiceControlPayload({
+            type: 'input_audio_buffer.commit',
+            userProfile: currentContext.userProfile,
+            multimodalFeatures: currentContext.multimodalFeatures,
+            sampleRate: TARGET_SAMPLE_RATE,
+          }),
+        })
       )
     }
     transcriptReceivedRef.current = false

@@ -32,8 +32,12 @@ function VoiceLevelMeter({ level }) {
     )
 }
 
-export default function VoicePanel({ voiceStream, handleVoiceToggle }) {
+export default function VoicePanel({ voiceStream, handleVoiceToggle, ttsPlayback }) {
     const voiceStateLabel = formatVoiceState(voiceStream.connectionState, voiceStream.isRecording)
+    const playbackStateLabel = voiceStream.isRecording
+        ? '录音中'
+        : (ttsPlayback?.isPlaying ? '语音回复播放中' : '语音回复待命')
+    const playbackError = ttsPlayback?.playbackError ?? ''
 
     return (
         <div className="mb-4 grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
@@ -73,8 +77,17 @@ export default function VoicePanel({ voiceStream, handleVoiceToggle }) {
                     <div className="rounded-full bg-white/80 px-4 py-2 text-sm font-medium text-stone-600 transition-colors">
                         {voiceStateLabel}
                     </div>
+                    <div className="rounded-full bg-[#eef3ea] px-4 py-2 text-sm font-medium text-[#6f8a80] transition-colors">
+                        {playbackStateLabel}
+                    </div>
                     <VoiceLevelMeter level={voiceStream.audioLevel} />
                 </div>
+
+                {playbackError ? (
+                    <p className="mt-4 rounded-2xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-700">
+                        {playbackError}
+                    </p>
+                ) : null}
             </motion.div>
 
             <motion.div

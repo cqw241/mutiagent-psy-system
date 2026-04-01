@@ -56,6 +56,7 @@ export default function ChatInterface() {
     if (faceAnalysis.isActive) {
       faceAnalysis.stop()
     }
+    void ttsPlayback.primePlayback()
     pendingCallBootRef.current = true
     setIsVideoCameraEnabled(true)
     setIsVideoCallActive(true)
@@ -104,6 +105,7 @@ export default function ChatInterface() {
               <VoicePanel
                 voiceStream={voiceStream}
                 handleVoiceToggle={handleVoiceToggle}
+                ttsPlayback={ttsPlayback}
               />
 
               <FaceToggle faceAnalysis={faceAnalysis} />

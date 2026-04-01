@@ -136,3 +136,14 @@ export function appendVoiceTranscriptMessage(messages, transcriptText, { now = D
     },
   ]
 }
+
+export function buildTurnMultimodalFeatures({
+  inputMode = 'text',
+  responseAudio = false,
+  callMode = 'standard',
+} = {}) {
+  return {
+    response_audio: inputMode === 'voice' ? true : Boolean(responseAudio),
+    call_mode: callMode,
+  }
+}
