@@ -1,6 +1,7 @@
 import { motion } from 'framer-motion'
+import TypewriterText from './TypewriterText'
 
-export default function MessageList({ messages }) {
+export default function MessageList({ messages, onAssistantTypingDone }) {
     return (
         <div className="flex-1 space-y-4 overflow-y-auto px-1 py-4">
             {messages.map((message) => {
@@ -29,6 +30,7 @@ export default function MessageList({ messages }) {
                 }
 
                 const isUser = message.role === 'user'
+                const isTypingAssistantReply = message.role === 'assistant' && message.typing
                 return (
                     <motion.div
                         initial={{ opacity: 0, y: 10 }}
@@ -44,8 +46,16 @@ export default function MessageList({ messages }) {
                                 }`}
                         >
                             <p className="whitespace-pre-wrap text-[15px] leading-7">
-                                {message.text}
-                                {message.streaming ? (
+                                {isTypingAssistantReply ? (
+                                    <TypewriterText
+                                        text={message.text}
+                                        active
+                                        onDone={() => onAssistantTypingDone?.(message.id)}
+                                    />
+                                ) : (
+                                    message.text
+                                )}
+                                {message.streaming || isTypingAssistantReply ? (
                                     <span className="ml-1 inline-block h-5 w-2 animate-pulse rounded-full bg-stone-400/70 align-middle" />
                                 ) : null}
                             </p>

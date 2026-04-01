@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { shouldSendVoiceCommit } from './useAudioStream.helpers'
 
 const TARGET_SAMPLE_RATE = 16000
 
@@ -95,6 +96,7 @@ export function useAudioStream({
   const sourceNodeRef = useRef(null)
   const processorNodeRef = useRef(null)
   const sinkNodeRef = useRef(null)
+  const transcriptReceivedRef = useRef(false)
   const onEventRef = useRef(onEvent)
   const payloadContextRef = useRef({
     userProfile,
@@ -202,6 +204,7 @@ export function useAudioStream({
     socket.addEventListener('message', (event) => {
       const payload = JSON.parse(event.data)
       if (payload.type === 'transcript') {
+        transcriptReceivedRef.current = true
         setLiveTranscript(payload.text ?? '')
       }
       if (payload.type === 'error') {
@@ -215,6 +218,7 @@ export function useAudioStream({
       setConnectionState((current) => (current === 'idle' ? current : 'closed'))
       setIsRecording(false)
       setAudioLevel(0)
+      transcriptReceivedRef.current = false
     })
 
     socket.addEventListener('error', () => {
@@ -243,6 +247,7 @@ export function useAudioStream({
     }
 
     try {
+      transcriptReceivedRef.current = false
       const socket = await ensureSocketConnection()
       const mediaStream = await navigator.mediaDevices.getUserMedia({
         audio: {
@@ -307,8 +312,15 @@ export function useAudioStream({
     setIsRecording(false)
 
     const socket = socketRef.current
-    if (socket?.readyState === WebSocket.OPEN) {
-      const { multimodalFeatures: currentFeatures, userProfile: currentProfile } = payloadContextRef.current
+    const currentContext = payloadContextRef.current
+    const callMode = currentContext.multimodalFeatures?.call_mode ?? 'standard'
+    const shouldCommit = shouldSendVoiceCommit({
+      callMode,
+      hasTranscriptSinceRecordingStart: transcriptReceivedRef.current,
+    })
+
+    if (socket?.readyState === WebSocket.OPEN && shouldCommit) {
+      const { multimodalFeatures: currentFeatures, userProfile: currentProfile } = currentContext
       socket.send(
         JSON.stringify({
           type: 'input_audio_buffer.commit',
@@ -321,6 +333,7 @@ export function useAudioStream({
         }),
       )
     }
+    transcriptReceivedRef.current = false
   }
 
   function toggleStreaming() {

@@ -3,6 +3,7 @@ import { buildWebSocketUrl, useAudioStream } from './useAudioStream'
 import { useTTSPlaybackQueue } from './useTTSPlaybackQueue'
 import {
     appendVoiceTranscriptMessage,
+    completeAssistantTyping,
     finalizeAssistantMessages,
 } from './useChatAgent.helpers'
 
@@ -31,7 +32,6 @@ export function useChatAgent({
 } = {}) {
     const sessionId = useMemo(() => makeSessionId(), [])
     const textSocketRef = useRef(null)
-    const streamingIdRef = useRef(null)
     const handlePayloadRef = useRef(null)
     const tokenBufferRef = useRef('')
     const ttsPlayback = useTTSPlaybackQueue({ enabled: responseAudio })
@@ -48,13 +48,12 @@ export function useChatAgent({
     const [stageLabel, setStageLabel] = useState('正在建立安全连接...')
     const [latestTrace, setLatestTrace] = useState(null)
 
-    const finalizeAssistantReply = useCallback((finalPayload) => {
+    const finalizeAssistantReplyNow = useCallback((finalPayload) => {
         const replyText = finalPayload.reply || tokenBufferRef.current || ''
-        const currentStreamId = streamingIdRef.current
 
         setMessages((current) => {
             return finalizeAssistantMessages(current, {
-                currentStreamId,
+                currentStreamId: null,
                 replyText,
                 finalPayload,
             })
@@ -62,7 +61,6 @@ export function useChatAgent({
 
         setLatestTrace(finalPayload.trace ?? null)
         tokenBufferRef.current = ''
-        streamingIdRef.current = null
     }, [])
 
     const handleRealtimePayload = useCallback((payload) => {
@@ -91,54 +89,20 @@ export function useChatAgent({
             const text = payload.chunk ?? payload.content ?? ''
             if (!text) return
             tokenBufferRef.current += text
-            setMessages((current) => {
-                const currentStreamId = streamingIdRef.current
-                if (!currentStreamId) {
-                    const nextId = `assistant-${Date.now()}`
-                    streamingIdRef.current = nextId
-                    return [
-                        ...current,
-                        {
-                            id: nextId,
-                            role: 'assistant',
-                            text,
-                            streaming: true,
-                        },
-                    ]
-                }
-
-                let found = false
-                const next = current.map((item) => {
-                    if (item.id !== currentStreamId) {
-                        return item
-                    }
-                    found = true
-                    return {
-                        ...item,
-                        text: `${item.text}${text}`,
-                        streaming: true,
-                    }
-                })
-
-                if (found) {
-                    return next
-                }
-
-                return [
-                    ...current,
-                    {
-                        id: currentStreamId,
-                        role: 'assistant',
-                        text,
-                        streaming: true,
-                    },
-                ]
-            })
             return
         }
 
         if (payload.type === 'final') {
-            finalizeAssistantReply(payload)
+            const replyText = payload.reply || tokenBufferRef.current || ''
+            if (!replyText) {
+                finalizeAssistantReplyNow(payload)
+                return
+            }
+
+            finalizeAssistantReplyNow({
+                ...payload,
+                reply: replyText,
+            })
             return
         }
 
@@ -150,7 +114,7 @@ export function useChatAgent({
         if (payload.type === 'error') {
             setStageLabel(payload.message ?? '连接出现波动，请稍后重试。')
         }
-    }, [finalizeAssistantReply, ttsPlayback])
+    }, [finalizeAssistantReplyNow, ttsPlayback])
 
     handlePayloadRef.current = handleRealtimePayload
 
@@ -213,13 +177,22 @@ export function useChatAgent({
         }
 
         setMessages((current) => [
-            ...current.map((item) => (item.streaming ? { ...item, streaming: false } : item)),
+            ...current.map((item) => {
+                if (!item.streaming && !item.typing) {
+                    return item
+                }
+
+                return {
+                    ...item,
+                    streaming: false,
+                    typing: false,
+                }
+            }),
             { id: `user-${Date.now()}`, role: 'user', text: message },
         ])
         setInput('')
         setStageLabel('已发送，正在认真接住你的表达。')
         tokenBufferRef.current = ''
-        streamingIdRef.current = null
         textSocketRef.current.send(
             JSON.stringify({
                 message,
@@ -241,6 +214,10 @@ export function useChatAgent({
         voiceStream.toggleStreaming()
     }, [voiceStream])
 
+    const handleAssistantTypingDone = useCallback((messageId) => {
+        setMessages((current) => completeAssistantTyping(current, messageId))
+    }, [])
+
     return {
         sessionId,
         messages,
@@ -252,6 +229,7 @@ export function useChatAgent({
         latestTrace,
         handleSubmit,
         handleVoiceToggle,
+        handleAssistantTypingDone,
         voiceStream,
         voiceSendFn,
         ttsPlayback,

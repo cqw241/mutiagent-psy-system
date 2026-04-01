@@ -28,6 +28,7 @@ export default function ChatInterface() {
     latestTrace,
     handleSubmit,
     handleVoiceToggle,
+    handleAssistantTypingDone,
     voiceStream,
     voiceSendFn,
     ttsPlayback,
@@ -86,6 +87,7 @@ export default function ChatInterface() {
           <main className="flex-1">
             <VideoCallPanel
               messages={messages}
+              onAssistantTypingDone={handleAssistantTypingDone}
               stageLabel={stageLabel}
               voiceStream={voiceStream}
               faceAnalysis={faceAnalysis}
@@ -106,7 +108,10 @@ export default function ChatInterface() {
 
               <FaceToggle faceAnalysis={faceAnalysis} />
 
-              <MessageList messages={messages} />
+              <MessageList
+                messages={messages}
+                onAssistantTypingDone={handleAssistantTypingDone}
+              />
 
               <InputCabin
                 input={input}

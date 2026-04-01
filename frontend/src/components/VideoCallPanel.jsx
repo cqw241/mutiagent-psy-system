@@ -1,6 +1,7 @@
 import { motion } from 'framer-motion'
 
 import { CameraIcon, CameraOffIcon, PhoneOffIcon, WaveIcon } from './Icons'
+import TypewriterText from './TypewriterText'
 
 function CallControlButton({
   label,
@@ -28,7 +29,7 @@ function CallControlButton({
   )
 }
 
-function TranscriptBubble({ message }) {
+function TranscriptBubble({ message, onAssistantTypingDone }) {
   if (message.role === 'support') {
     return (
       <div className="rounded-[26px] border border-[#dbcdbd] bg-white/78 p-5 shadow-[0_18px_42px_rgba(128,105,82,0.12)] backdrop-blur">
@@ -48,6 +49,7 @@ function TranscriptBubble({ message }) {
   }
 
   const isUser = message.role === 'user'
+  const isTypingAssistantReply = message.role === 'assistant' && message.typing
 
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
@@ -59,8 +61,16 @@ function TranscriptBubble({ message }) {
         }`}
       >
         <p className="whitespace-pre-wrap text-[15px] leading-7">
-          {message.text}
-          {message.streaming ? (
+          {isTypingAssistantReply ? (
+            <TypewriterText
+              text={message.text}
+              active
+              onDone={() => onAssistantTypingDone?.(message.id)}
+            />
+          ) : (
+            message.text
+          )}
+          {message.streaming || isTypingAssistantReply ? (
             <span className="ml-1 inline-block h-5 w-2 animate-pulse rounded-full bg-stone-400/70 align-middle" />
           ) : null}
         </p>
@@ -71,6 +81,7 @@ function TranscriptBubble({ message }) {
 
 export default function VideoCallPanel({
   messages,
+  onAssistantTypingDone,
   stageLabel,
   voiceStream,
   faceAnalysis,
@@ -130,7 +141,11 @@ export default function VideoCallPanel({
             ) : null}
 
             {transcriptMessages.map((message) => (
-              <TranscriptBubble key={message.id} message={message} />
+              <TranscriptBubble
+                key={message.id}
+                message={message}
+                onAssistantTypingDone={onAssistantTypingDone}
+              />
             ))}
           </div>
         </motion.div>

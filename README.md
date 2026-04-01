@@ -1,6 +1,6 @@
 # 面向高校学生心理风险早期识别与转介辅助的多智能体协同系统
 
-这是一个面向高校心理风险早期识别与规范转介的多智能体系统原型。当前版本已经全面升级为**多智能体（Multi-Agent）并行架构**，具备真实的 Fan-out/Fan-in 图拓扑，实现了文本、语音并行分析与条件路由流转。系统目标是辅助风险识别与流程转介，绝不替代专业心理咨询或医疗诊断。
+这是一个面向高校心理风险早期识别与规范转介的多智能体系统原型。当前版本已经全面升级为**多智能体（Multi-Agent）并行架构**，具备真实的 Fan-out/Fan-in 图拓扑，实现了文本、语音、端侧面部特征的并行分析与条件路由流转，同时提供标准聊天与视频通话两种交互模式。系统目标是辅助风险识别与流程转介，绝不替代专业心理咨询或医疗诊断。
 
 当前建议把它视为“**可联调、可验证、可继续硬化的试点前版本**”。若要进入校内试点，建议先阅读 [Pilot MVP Contract](docs/pilot-mvp.md) 并完成持久化、审计和 CI 基建。
 
@@ -55,17 +55,19 @@ flowchart LR
 - **1.25秒滑动窗口平滑**: 引入特征流滑动降噪（Average Pooling），控制网络压力并消除视频帧级别的高频抖动。
 - **非诊断与辅助校准**: 提取的面部观察结果（如“用户持续皱眉”或“微弱微笑”）在输入 `risk_assessor` 节点时会被强制作为 *上下文轻度辅助校准（Contextual Calibration）* 处理，系统禁止单凭面部特征直接引发高危跳变。
 
-### 5. 实时交互、闭环及告警
-- 支持 RESTful (`/chat`) 及 WebSocket 流式接口 (`/ws/chat/{session_id}`, `/ws/voice-chat/{session_id}`)。
+### 5. 实时交互、视频通话与告警闭环
+- 支持 REST (`/chat`) 与两条 WebSocket 链路：文本流式接口 (`/ws/chat/{session_id}`) 和语音流式接口 (`/ws/voice-chat/{session_id}`)。
+- 前端提供标准聊天模式与视频通话模式：视频通话会自动拉起语音流、按需启用本地摄像头面部分析，并在后端返回 `tts_audio` / `tts_end` 事件时顺序播放语音回复。
+- 语音 WebSocket 会先发送 `transcript` 事件，再进入 `stage` / `token` / `final` / `end` 回复链路；文本 WebSocket 则直接进入流式回复链路。
 - 高风险会话不再通过冰冷模板提示，改为 `referral_agent` 输出极具同理心的温暖过渡语，并组装热线求助卡片。
-- 对辅导员/后台的异步 Webhook 高风险脱敏告警。
-- 发送给前端的 `trace` 包含解释性字段、校准基数、各 Agent 的内部判断，以及 emotion2vec 的显式状态摘要。
+- 对辅导员/后台同时提供脱敏后的同步调度状态与异步 Webhook 投递能力，便于校内值班系统对接。
+- 发送给前端的 `trace` 包含解释性字段、风险校准、各 Agent 的内部判断、emotion2vec 状态摘要，以及最新面部辅助观察结果。
 
 ### 6. 健壮的工程设施
 - 所有重复状态访问和组装提取到 `app/utils/state_helpers.py`（符合 DRY 原则）。
 - LLM 节点的系统提示词与 user prompt builder 已集中收敛到 `app/prompts/`，当前主流程 4 个节点与兼容旧节点 `information_extractor` 统一复用，便于后续维护、审查与版本化。
 - 为高并发场景添加了 LangGraph 的安全并发写策略（自定义 `merge_dicts` reducer 解决 `agent_judgments` 写入竞争）。
-- **自动化测试保障**：114 个 pytest 自动化测试通过，覆盖路由器规则、各个独立 Node 回退链路、集中 prompt 管理、emotion2vec service 降级路径、WebSocket trace 暴露、物理/MFCC 音频特征提取、FACS 面部置信度聚合处理以及整个 Graph 整合运行。
+- **自动化测试保障**：118 个 pytest 自动化测试通过，覆盖路由器规则、各个独立 Node 回退链路、集中 prompt 管理、emotion2vec service 降级路径、WebSocket / Voice WS 事件契约、物理/MFCC 音频特征提取、FACS 面部置信度聚合处理以及整个 Graph 整合运行；前端另有 5 个 `node:test` 纯逻辑回归用例覆盖 typewriter 和流式消息/TTS 辅助逻辑。
 
 ---
 
@@ -103,6 +105,7 @@ pip install -r requirements.txt
 - `ENABLE_RAG` (设为 `false` 可在无 RAG 时本地测试纯 Agent 流转)
 - `CHECKPOINT_BACKEND` (`memory` / `file`，更高阶的 `postgres` / `redis` 预留给外部 saver 扩展)
 - `CHECKPOINT_DIR` (当 `CHECKPOINT_BACKEND=file` 时生效)
+- `TTS_ENABLED`、`TTS_VOICE`、`TTS_RATE`、`TTS_VOLUME`、`TTS_OUTPUT_FORMAT`（控制视频通话模式下的流式语音回复）
 - `ENABLE_EMOTION2VEC` (默认 `true`；设为 `false` 可关闭本地 emotion2vec 辅助语音信号)
 - `EMOTION2VEC_MODEL_DIR` (指向本地模型目录，如 `/media/chai/Data/Linux_AI_Resources/modelscope/hub/models/iic/emotion2vec_plus_large`)
 - `EMOTION2VEC_SAMPLE_RATE` (默认 `16000`，与模型 README 保持一致)
@@ -139,14 +142,16 @@ npm run dev -- --host 0.0.0.0
 ```
 访问 `http://localhost:5173` 进行交互。
 
+若要体验视频通话模式中的本地面部分析，请确认 `frontend/public/models/face_landmarker.task` 存在；当前仓库已包含该模型资产。
+
 ## 本地代码测试建议
 
-项目内置了详尽的 Pytest 体系来捍卫修改边界。开发或重构后，请运行：
+项目当前同时维护后端 Pytest 与前端 `node:test` 级别的纯逻辑回归。开发或重构后，建议至少运行：
 ```bash
-conda activate llm_env
 conda run -n llm_env python -m pytest -q --tb=short
+node --test frontend/src/lib/typewriterStream.test.js frontend/src/hooks/useChatAgent.helpers.test.js
 ```
-> 当前主测试集为 114 个 pytest 用例，新增覆盖集中 prompt 管理、emotion2vec service、纯本地端侧 MediaPipe 防抖特征集成、配置读取、节点级降级、WebSocket trace 暴露与最小图契约。
+> 当前后端主测试集为 118 个 pytest 用例；前端补充 5 个 `node:test` 用例，覆盖 typewriter、语音 transcript 去重/空消息保护，以及流式 assistant 收尾逻辑。
 
 ---
 
@@ -154,5 +159,5 @@ conda run -n llm_env python -m pytest -q --tb=short
 
 1. **持久化与持久会话**：当前仓库已内置 `file` checkpointer 作为单机持久化方案；下一步应接入 PostgreSQL/Redis 等真正的多实例持久化后端。
 2. **本地模型挂载**：`BaseLLMClient` 抽象完全不变前提下，打通 A40 GPU 上的 Qwen2.5-72B 本地推理接口验证。
-3. **真实多模态视频/音频**：`face_analyzer` 当前仍为占位节点；`voice_analyzer` 已经接入可选 `emotion2vec_plus_large` utterance 级深度 SER 辅助信号，下一步可再扩展到 segment 级/时序级建模。
+3. **真实多模态视频/音频**：`face_analyzer` 已接入端侧 MediaPipe FACS/AU 聚合结果并参与风险辅助校准；`voice_analyzer` 已接入可选 `emotion2vec_plus_large` utterance 级深度 SER 辅助信号，下一步可再扩展到更长时序、多脸场景和 segment 级建模。
 4. **多重安全护栏**：声学特征与 emotion2vec 结果当前都仅做客观特征下发与“低危至中危”之间的适度调校，高危风险和警报坚持以文本模型理解与安全规则兜底。
