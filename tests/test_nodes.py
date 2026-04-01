@@ -12,6 +12,7 @@ from app.nodes.signal_aggregator import signal_aggregator_node
 from app.nodes.risk_assessor import risk_assessor_node
 from app.nodes.response_generator import response_generator_node
 from app.nodes.referral_agent import referral_agent_node
+from app.services.tts_service import TTSChunk
 
 
 class DummyRiskLLM:
@@ -47,6 +48,33 @@ class DummyStreamingLLM:
         self.stream_prompts.append((system_prompt, user_prompt, fallback_text))
         for chunk in ["我", "会", "陪", "着", "你"]:
             yield chunk
+
+
+class DummySentenceStreamingLLM:
+    def complete_json(self, system_prompt: str, user_prompt: str):
+        return {}
+
+    async def stream_text(self, system_prompt: str, user_prompt: str, fallback_text: str):
+        for chunk in ["先深呼吸。", "我们一起", "拆解眼前这件事。"]:
+            yield chunk
+
+
+class DummyTTSService:
+    def __init__(self):
+        self.calls: list[str] = []
+
+    async def stream_audio(self, text: str):
+        self.calls.append(text)
+        yield TTSChunk(
+            audio_bytes=f"{text}-chunk-1".encode("utf-8"),
+            mime_type="audio/mpeg",
+            output_format="audio-24khz-48kbitrate-mono-mp3",
+        )
+        yield TTSChunk(
+            audio_bytes=f"{text}-chunk-2".encode("utf-8"),
+            mime_type="audio/mpeg",
+            output_format="audio-24khz-48kbitrate-mono-mp3",
+        )
 
 
 class DummyExtractorLLM:
@@ -1114,3 +1142,46 @@ def test_response_generator_falls_back_if_no_referral_reply():
     updated = asyncio.run(response_generator_node(state, llm_client=DummyStreamingLLM()))
     assert "辅导员" in updated["reply"]
     assert "热线" in updated["reply"]
+
+
+def test_response_generator_emits_sentence_chunked_tts_events(monkeypatch):
+    llm = DummySentenceStreamingLLM()
+    tts = DummyTTSService()
+    stream_events: list[dict[str, Any]] = []
+
+    monkeypatch.setattr(
+        "app.nodes.response_generator.get_stream_writer",
+        lambda: stream_events.append,
+        raising=False,
+    )
+
+    state = {
+        "session_id": "sess-tts-1",
+        "trace_id": "trace-tts-1",
+        "chat_history": [{"role": "user", "content": "我有点慌，不知道怎么开始。"}],
+        "multimodal_features": {"response_audio": True, "call_mode": "video"},
+        "current_risk_score": 0.25,
+        "agent_judgments": {},
+        "extracted_signals": {"emotion_keywords": []},
+        "risk_level": "low",
+        "referral_required": False,
+        "reference_context": "",
+    }
+
+    updated = asyncio.run(
+        response_generator_node(state, llm_client=llm, tts_service=tts)
+    )
+
+    assert updated["reply"] == "先深呼吸。我们一起拆解眼前这件事。"
+    assert tts.calls == ["先深呼吸。", "我们一起拆解眼前这件事。"]
+
+    token_events = [event for event in stream_events if event["type"] == "token"]
+    tts_audio_events = [event for event in stream_events if event["type"] == "tts_audio"]
+    tts_end_events = [event for event in stream_events if event["type"] == "tts_end"]
+
+    assert token_events
+    assert len(tts_audio_events) == 4
+    assert [event["text"] for event in tts_end_events] == [
+        "先深呼吸。",
+        "我们一起拆解眼前这件事。",
+    ]

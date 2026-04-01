@@ -4,6 +4,8 @@
 - {"type":"stage","name":"received","message":"..."}
 - {"type":"stage","name":"rag_retriever_done","message":"..."}
 - {"type":"token","chunk":"我"}
+- {"type":"tts_audio","segment_id":"tts-0001","payload":"<base64>"}
+- {"type":"tts_end","segment_id":"tts-0001","text":"先深呼吸。"}
 - {"type":"final","reply":"...", "referral_required": false, "hotline_card": null, "trace_id": "..."}
 - {"type":"end"}
 - {"type":"error","message":"..."}
@@ -142,10 +144,10 @@ async def _stream_graph_reply(
                         {"type": "stage", "name": stage[0], "message": stage[1]},
                     ):
                         return
-        elif mode == "custom" and chunk.get("type") == "token":
+        elif mode == "custom" and chunk.get("type") in {"token", "tts_audio", "tts_end"}:
             if not await _send_json_if_open(websocket, chunk):
                 return
-            # 让出事件循环，确保每个 token 帧独立发送到浏览器
+            # 让出事件循环，确保每个自定义事件帧独立发送到浏览器
             await asyncio.sleep(0)
 
     # 优先从累积状态取值，回退到 checkpoint
@@ -185,6 +187,57 @@ def _segment_to_event_payload(segment: VoiceSegmentResult) -> dict:
         "duration_ms": segment.duration_ms,
         "acoustic_features": segment.acoustic_features,
     }
+
+
+def _normalize_transcript_text(text: str | None) -> str:
+    return text.strip() if isinstance(text, str) else ""
+
+
+async def _dispatch_voice_segment(
+    websocket: WebSocket,
+    session_id: str,
+    segment: VoiceSegmentResult,
+    voice_context: dict,
+    emotion2vec_reading: dict | None = None,
+) -> bool:
+    transcript = _normalize_transcript_text(getattr(segment, "transcript", ""))
+    if not transcript:
+        logger.debug(
+            "Skipping empty voice transcript segment_id=%s",
+            getattr(segment, "segment_id", "unknown"),
+        )
+        return False
+
+    segment.transcript = transcript
+
+    if not await _send_json_if_open(
+        websocket,
+        _segment_to_event_payload(segment),
+    ):
+        return False
+
+    face_segs = list(voice_context["face_segments"])
+    voice_context["face_segments"] = []
+
+    await _stream_graph_reply(
+        websocket=websocket,
+        session_id=session_id,
+        message=segment.transcript,
+        user_profile=voice_context["user_profile"],
+        multimodal_features=_merge_voice_multimodal_features(
+            voice_context["multimodal_features"],
+            segment,
+            emotion2vec_reading=emotion2vec_reading,
+        ),
+        voice_segments=[
+            _build_voice_segment_state(
+                segment,
+                emotion2vec_reading=emotion2vec_reading,
+            )
+        ],
+        face_segments=face_segs,
+    )
+    return True
 
 
 def _build_voice_segment_state(
@@ -373,31 +426,14 @@ async def websocket_voice_chat(websocket: WebSocket, session_id: str) -> None:
                 segments = _process_voice_chunk(transcriber, raw_chunk)
                 for segment in segments:
                     emotion2vec_reading = await _analyze_emotion2vec_for_segment(segment)
-                    if not await _send_json_if_open(
-                        websocket,
-                        _segment_to_event_payload(segment),
-                    ):
-                        return
-                    face_segs = list(voice_context["face_segments"])
-                    voice_context["face_segments"] = []
-                    await _stream_graph_reply(
+                    if not await _dispatch_voice_segment(
                         websocket=websocket,
                         session_id=session_id,
-                        message=segment.transcript,
-                        user_profile=voice_context["user_profile"],
-                        multimodal_features=_merge_voice_multimodal_features(
-                            voice_context["multimodal_features"],
-                            segment,
-                            emotion2vec_reading=emotion2vec_reading,
-                        ),
-                        voice_segments=[
-                            _build_voice_segment_state(
-                                segment,
-                                emotion2vec_reading=emotion2vec_reading,
-                            )
-                        ],
-                        face_segments=face_segs,
-                    )
+                        segment=segment,
+                        voice_context=voice_context,
+                        emotion2vec_reading=emotion2vec_reading,
+                    ) and _websocket_is_closed(websocket):
+                        return
                 continue
 
             raw_text = message.get("text")
@@ -426,31 +462,14 @@ async def websocket_voice_chat(websocket: WebSocket, session_id: str) -> None:
                 segment = _flush_voice_segment(transcriber)
                 if segment:
                     emotion2vec_reading = await _analyze_emotion2vec_for_segment(segment)
-                    if not await _send_json_if_open(
-                        websocket,
-                        _segment_to_event_payload(segment),
-                    ):
-                        return
-                    face_segs = list(voice_context["face_segments"])
-                    voice_context["face_segments"] = []
-                    await _stream_graph_reply(
+                    if not await _dispatch_voice_segment(
                         websocket=websocket,
                         session_id=session_id,
-                        message=segment.transcript,
-                        user_profile=voice_context["user_profile"],
-                        multimodal_features=_merge_voice_multimodal_features(
-                            voice_context["multimodal_features"],
-                            segment,
-                            emotion2vec_reading=emotion2vec_reading,
-                        ),
-                        voice_segments=[
-                            _build_voice_segment_state(
-                                segment,
-                                emotion2vec_reading=emotion2vec_reading,
-                            )
-                        ],
-                        face_segments=face_segs,
-                    )
+                        segment=segment,
+                        voice_context=voice_context,
+                        emotion2vec_reading=emotion2vec_reading,
+                    ) and _websocket_is_closed(websocket):
+                        return
     except WebSocketDisconnect:
         return
     except RuntimeError as exc:

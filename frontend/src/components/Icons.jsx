@@ -34,3 +34,23 @@ export function CameraIcon(props) {
         </svg>
     )
 }
+
+export function CameraOffIcon(props) {
+    return (
+        <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8" {...props}>
+            <path d="M4 4 20 20" />
+            <path d="M9.5 4h5L17 7h3a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-9a2 2 0 0 1 .7-1.5" />
+            <path d="M14.8 15.1A3 3 0 0 1 9 13" />
+        </svg>
+    )
+}
+
+export function PhoneOffIcon(props) {
+    return (
+        <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8" {...props}>
+            <path d="M3 15c2.4-2 5.4-3 9-3s6.6 1 9 3" />
+            <path d="M5 14.5 4 20l4-1" />
+            <path d="m19 14.5 1 5.5-4-1" />
+        </svg>
+    )
+}

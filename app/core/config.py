@@ -74,6 +74,18 @@ class Settings:
         default_factory=lambda: _env_int("LLM_TIMEOUT_SECONDS", 30)
     )
     llm_verbose: bool = field(default_factory=lambda: _env_bool("LITELLM_VERBOSE", False))
+    tts_enabled: bool = field(default_factory=lambda: _env_bool("TTS_ENABLED", True))
+    tts_voice: str = field(
+        default_factory=lambda: _env_str("TTS_VOICE", "zh-CN-XiaoxiaoNeural")
+    )
+    tts_rate: str = field(default_factory=lambda: _env_str("TTS_RATE", "+0%"))
+    tts_volume: str = field(default_factory=lambda: _env_str("TTS_VOLUME", "+0%"))
+    tts_output_format: str = field(
+        default_factory=lambda: _env_str(
+            "TTS_OUTPUT_FORMAT",
+            "audio-24khz-48kbitrate-mono-mp3",
+        )
+    )
 
     # 高风险闭环先走 mock webhook，后续替换成真实系统即可。
     counselor_alert_webhook: str = field(

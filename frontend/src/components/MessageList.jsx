@@ -1,7 +1,6 @@
-import TypewriterText from './TypewriterText'
 import { motion } from 'framer-motion'
 
-export default function MessageList({ messages, finalizePendingAssistantReply }) {
+export default function MessageList({ messages }) {
     return (
         <div className="flex-1 space-y-4 overflow-y-auto px-1 py-4">
             {messages.map((message) => {
@@ -45,15 +44,7 @@ export default function MessageList({ messages, finalizePendingAssistantReply })
                                 }`}
                         >
                             <p className="whitespace-pre-wrap text-[15px] leading-7">
-                                {message.streaming ? (
-                                    <TypewriterText
-                                        text={message.text}
-                                        active={message.streaming}
-                                        onDone={finalizePendingAssistantReply}
-                                    />
-                                ) : (
-                                    message.text
-                                )}
+                                {message.text}
                                 {message.streaming ? (
                                     <span className="ml-1 inline-block h-5 w-2 animate-pulse rounded-full bg-stone-400/70 align-middle" />
                                 ) : null}
