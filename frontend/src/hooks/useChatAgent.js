@@ -2,10 +2,11 @@ import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { buildWebSocketUrl, useAudioStream } from './useAudioStream'
 import { useTTSPlaybackQueue } from './useTTSPlaybackQueue'
 import {
-  appendVoiceTranscriptMessage,
-  buildTurnMultimodalFeatures,
-  completeAssistantTyping,
-  finalizeAssistantMessages,
+    applyAssistantTokenFrame,
+    appendVoiceTranscriptMessage,
+    buildTurnMultimodalFeatures,
+    completeAssistantTyping,
+    finalizeAssistantMessages,
 } from './useChatAgent.helpers'
 
 function makeSessionId() {
@@ -35,6 +36,7 @@ export function useChatAgent({
     const textSocketRef = useRef(null)
     const handlePayloadRef = useRef(null)
     const tokenBufferRef = useRef('')
+    const currentAssistantStreamIdRef = useRef(null)
     const ttsPlayback = useTTSPlaybackQueue({ enabled: true })
 
     const [input, setInput] = useState('')
@@ -51,10 +53,11 @@ export function useChatAgent({
 
     const finalizeAssistantReplyNow = useCallback((finalPayload) => {
         const replyText = finalPayload.reply || tokenBufferRef.current || ''
+        const currentStreamId = currentAssistantStreamIdRef.current
 
         setMessages((current) => {
             return finalizeAssistantMessages(current, {
-                currentStreamId: null,
+                currentStreamId,
                 replyText,
                 finalPayload,
             })
@@ -62,6 +65,7 @@ export function useChatAgent({
 
         setLatestTrace(finalPayload.trace ?? null)
         tokenBufferRef.current = ''
+        currentAssistantStreamIdRef.current = null
     }, [])
 
     const handleRealtimePayload = useCallback((payload) => {
@@ -89,7 +93,19 @@ export function useChatAgent({
         if (payload.type === 'token' || payload.type === 'chunk') {
             const text = payload.chunk ?? payload.content ?? ''
             if (!text) return
-            tokenBufferRef.current += text
+
+            setMessages((current) => {
+                const tokenFrameResult = applyAssistantTokenFrame({
+                    messages: current,
+                    tokenBuffer: tokenBufferRef.current,
+                    frame: text,
+                    currentStreamId: currentAssistantStreamIdRef.current,
+                })
+
+                tokenBufferRef.current = tokenFrameResult.tokenBuffer
+                currentAssistantStreamIdRef.current = tokenFrameResult.streamId
+                return tokenFrameResult.messages
+            })
             return
         }
 
@@ -195,6 +211,7 @@ export function useChatAgent({
         setInput('')
         setStageLabel('已发送，正在认真接住你的表达。')
         tokenBufferRef.current = ''
+        currentAssistantStreamIdRef.current = null
         textSocketRef.current.send(
             JSON.stringify({
                 message,

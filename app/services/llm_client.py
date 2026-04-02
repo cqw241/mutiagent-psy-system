@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
@@ -22,6 +23,7 @@ except ImportError:  # pragma: no cover - 测试环境未安装时走安全降�
     completion = None
 
 logger = logging.getLogger(__name__)
+_BUFFERED_STREAM_EMIT_INTERVAL_SECONDS = 0.008
 
 
 class BaseLLMClient(ABC):
@@ -131,7 +133,14 @@ class LiteLLMClient(BaseLLMClient):
                 content = getattr(delta, "content", None) if delta else None
                 if content:
                     emitted = True
-                    yield content
+                    # Some providers may buffer and return large chunks.
+                    # Split to char-level tokens and add a tiny async yield between tokens
+                    # so browser UIs can render a visible streaming effect consistently.
+                    tokens = list(str(content))
+                    for index, token in enumerate(tokens):
+                        yield token
+                        if index < len(tokens) - 1:
+                            await asyncio.sleep(_BUFFERED_STREAM_EMIT_INTERVAL_SECONDS)
             if not emitted:
                 for char in fallback_text:
                     yield char

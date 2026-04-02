@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import {
+  applyAssistantTokenFrame,
   appendAssistantStreamFrame,
   appendVoiceTranscriptMessage,
   buildTurnMultimodalFeatures,
@@ -9,7 +10,7 @@ import {
   finalizeAssistantMessages,
 } from './useChatAgent.helpers.js'
 
-test('finalizeAssistantMessages merges the final reply into the active streaming bubble', () => {
+test('finalizeAssistantMessages merges the final reply into the active streaming bubble without restarting typing', () => {
   const messages = [
     { id: 'welcome', role: 'assistant', text: '你好' },
     { id: 'assistant-1', role: 'assistant', text: '抱抱你，', streaming: true },
@@ -30,7 +31,7 @@ test('finalizeAssistantMessages merges the final reply into the active streaming
     role: 'assistant',
     text: '抱抱你，听到你心情不好，我也很担心。',
     streaming: false,
-    typing: true,
+    typing: false,
   })
 })
 
@@ -121,6 +122,46 @@ test('appendAssistantStreamFrame appends subsequent frames to the active assista
     id: 'assistant-1',
     role: 'assistant',
     text: '抱抱',
+    streaming: true,
+  })
+})
+
+test('applyAssistantTokenFrame immediately projects token text into a streaming assistant bubble', () => {
+  const result = applyAssistantTokenFrame({
+    messages: [{ id: 'welcome', role: 'assistant', text: '你好' }],
+    tokenBuffer: '',
+    frame: '先',
+    currentStreamId: null,
+    now: () => 42,
+  })
+
+  assert.equal(result.streamId, 'assistant-42')
+  assert.equal(result.tokenBuffer, '先')
+  assert.deepEqual(result.messages[1], {
+    id: 'assistant-42',
+    role: 'assistant',
+    text: '先',
+    streaming: true,
+  })
+})
+
+test('applyAssistantTokenFrame appends text and token buffer for the active stream bubble', () => {
+  const result = applyAssistantTokenFrame({
+    messages: [
+      { id: 'welcome', role: 'assistant', text: '你好' },
+      { id: 'assistant-1', role: 'assistant', text: '先', streaming: true },
+    ],
+    tokenBuffer: '先',
+    frame: '深呼吸。',
+    currentStreamId: 'assistant-1',
+  })
+
+  assert.equal(result.streamId, 'assistant-1')
+  assert.equal(result.tokenBuffer, '先深呼吸。')
+  assert.deepEqual(result.messages[1], {
+    id: 'assistant-1',
+    role: 'assistant',
+    text: '先深呼吸。',
     streaming: true,
   })
 })

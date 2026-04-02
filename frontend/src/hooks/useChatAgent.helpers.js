@@ -8,7 +8,7 @@ export function finalizeAssistantMessages(messages, { currentStreamId, replyText
         ...item,
         text: replyText || item.text,
         streaming: false,
-        typing: true,
+        typing: false,
       }
     }
     return item
@@ -113,6 +113,34 @@ export function appendAssistantStreamFrame(
         streaming: true,
       },
     ],
+  }
+}
+
+export function applyAssistantTokenFrame({
+  messages,
+  tokenBuffer = '',
+  frame,
+  currentStreamId,
+  now = Date.now,
+} = {}) {
+  const text = typeof frame === 'string' ? frame : ''
+  if (!text) {
+    return {
+      messages,
+      tokenBuffer,
+      streamId: currentStreamId ?? null,
+    }
+  }
+
+  const streamResult = appendAssistantStreamFrame(messages, text, {
+    currentStreamId,
+    now,
+  })
+
+  return {
+    messages: streamResult.messages,
+    tokenBuffer: `${tokenBuffer}${text}`,
+    streamId: streamResult.streamId,
   }
 }
 

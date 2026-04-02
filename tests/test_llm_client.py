@@ -68,9 +68,33 @@ def test_stream_text_disables_qwen_thinking_mode(monkeypatch):
         raising=False,
     )
 
-    client = HelperLiteLLMClient(Settings(llm_api_key="demo-key", llm_model="openai/qwen3.5-plus"))
+    client = HelperLiteLLMClient(
+        Settings(llm_api_key="demo-key", llm_model="openai/qwen3.5-plus")
+    )
 
     asyncio.run(_collect_stream(client))
 
     assert captured["extra_body"] == {"enable_thinking": False}
     assert captured["messages"][1]["content"].startswith("/no_think")
+
+
+def test_stream_text_splits_single_provider_chunk_into_chars(monkeypatch):
+    def fake_completion(**_kwargs):
+        return [
+            SimpleNamespace(
+                choices=[SimpleNamespace(delta=SimpleNamespace(content="整段文字"))]
+            )
+        ]
+
+    monkeypatch.setattr(llm_client_module, "completion", fake_completion)
+    monkeypatch.setattr(
+        llm_client_module,
+        "litellm",
+        SimpleNamespace(set_verbose=False),
+        raising=False,
+    )
+
+    client = HelperLiteLLMClient(Settings(llm_api_key="demo-key"))
+    chunks = asyncio.run(_collect_stream(client))
+
+    assert chunks == ["整", "段", "文", "字"]
