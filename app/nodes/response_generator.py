@@ -172,7 +172,9 @@ async def response_generator_node(
     latest_text = latest_user_message(state)
     used_llm = False
 
-    stream_system_prompt = build_response_generator_system_prompt()
+    stream_system_prompt = build_response_generator_system_prompt(
+        state.get("peer_support_context", "")
+    )
 
     if risk_level == "high":
         # 高风险：referral_agent 已设置了温和过渡话术作为 reply
@@ -220,6 +222,7 @@ async def response_generator_node(
         "used_llm": used_llm,
         "risk_level": risk_level,
         "used_tts": want_tts,
+        "has_peer_support_context": bool(state.get("peer_support_context")),
     }
 
     return {

@@ -2,10 +2,10 @@
 
 ## 项目介绍白皮书
 
-版本：V1.2  
-日期：2026-04-02  
+版本：V1.3  
+日期：2026-04-15  
 文档定位：校内试点 / 立项汇报 / 跨团队项目介绍  
-代码基线：`main` 分支，已纳入 `qwen-tts-latest` 流式 TTS 改造
+代码基线：`main` 分支，已纳入 `peer_support_retriever` 节点与 `qwen-tts-latest` 流式 TTS 改造
 
 ---
 
@@ -13,7 +13,7 @@
 
 本项目是一套面向高校场景的多智能体心理风险早期识别与转介辅助系统，目标是围绕学生日常文本与语音交互信号，提供非诊断性的风险识别、温和回应、规范转介与辅导员告警能力。系统不替代心理咨询师，不输出医学诊断结论，不提供治疗方案，而是服务于“早发现、早响应、早转介”的校园支持闭环。
 
-截至 2026 年 4 月 2 日，项目已完成从线性单链路原型向 LangGraph 多智能体并行架构的升级，后端已落地 8 节点图拓扑、文本与语音并行分析、条件转介、RAG 检索增强、单机会话恢复、REST 与 WebSocket 双接口，以及 React 前端最新上线的视频通话模式、Edge 面部分析与基于阿里云百炼 `qwen-tts-latest` 的流式 TTS 回放。仓库当前自动化测试共收集 124 个 Pytest 用例，另有 19 个前端 `node:test` 纯逻辑用例通过，表明该系统已具备“可联调、可演示、可持续硬化”的试点前工程基础。
+截至 2026 年 4 月 15 日，项目已完成从线性单链路原型向 LangGraph 多智能体并行架构的升级，后端已落地 9 节点图拓扑、文本与语音并行分析、条件转介、双层 RAG 检索增强、单机会话恢复、REST 与 WebSocket 双接口，以及 React 前端的视频通话模式、Edge 面部分析与基于阿里云百炼 `qwen-tts-latest` 的流式 TTS 回放。当前仓库测试目录中已包含 128 个后端 pytest 测试函数，另有 23 个前端 `node:test` 纯逻辑用例，表明该系统已具备“可联调、可演示、可持续硬化”的试点前工程基础。
 
 ---
 
@@ -52,7 +52,7 @@
 - 坚守严格的端侧隐私：人脸模型前置在设备端（Edge）本地计算，任何情况下不采集上传实景视频和照片数据。
 - 不将语音声学特征或单一面部分析模型结果直接等同于高风险判定
 
-高风险判定必须经过风险评估节点与转介节点，不允许绕过 `risk_assessor -> referral_agent -> response_generator` 链路。
+高风险判定必须经过风险评估节点与转介节点，不允许绕过 `risk_assessor -> referral_agent` 链路；最终对学生的输出仍统一经由 `peer_support_retriever -> response_generator` 收口。
 
 ---
 
@@ -99,6 +99,7 @@
 - `rag_retriever`
 - `risk_assessor`
 - `referral_agent`
+- `peer_support_retriever`
 - `response_generator`
 
 当前实际工作流如下：
@@ -142,6 +143,7 @@ flowchart LR
         Risk["risk_assessor"]
         Decision{"risk_router"}
         Referral["referral_agent"]
+        Peer["peer_support_retriever"]
         Response["response_generator"]
     end
 
@@ -191,9 +193,11 @@ flowchart LR
     RAG --> Risk
     Risk --> Decision
     Decision -->|high| Referral
-    Decision -->|low / medium| Response
+    Decision -->|low / medium| Peer
     Referral --> Alert
-    Referral --> Response
+    Referral --> Peer
+    Peer -.检索.-> RagStore
+    Peer --> Response
 
     Voice -.深度 SER.-> E2V
     Response --> Reply
@@ -205,11 +209,12 @@ flowchart LR
     Trace --> TraceOut
 ```
 
-这一设计已经具备三个关键价值：
+这一设计已经具备四个关键价值：
 
 - 模态分析解耦，便于独立扩展或替换单个分析器。
 - 聚合节点统一对下游暴露 `extracted_signals`，降低节点间耦合。
 - 高风险转介由条件路由强制约束，减少业务逻辑绕行风险。
+- 最终回复前新增同辈倾听话术检索层，可在不影响风控主判定的前提下提升回复语气的一致性。
 
 ### 4.2 状态管理与并发安全
 
@@ -333,13 +338,13 @@ flowchart LR
 
 ### 7.1 RAG 检索增强
 
-系统已具备独立 `rag_retriever` 节点，可对接 RAGFlow 相似案例库，实现：
+系统当前已形成两层可选 RAG：
 
-- 按用户最新一轮表达检索历史相似案例
-- 将结果作为 `reference_context` 注入风险评估节点
-- 在外部依赖不可用时自动降级为空上下文
+- `rag_retriever`：按用户最新一轮表达检索历史相似案例，将结果作为 `reference_context` 注入风险评估节点
+- `peer_support_retriever`：按用户当前表达检索同辈倾听话术样例，将结果作为 `peer_support_context` 注入回复生成节点做风格对齐
+- 两条检索链路均可独立开关控制，并在外部依赖不可用时自动降级为空上下文
 
-这意味着项目已具备“可接知识库”的结构，而不是纯 Prompt 驱动的对话机器人。
+这意味着项目已具备“风险判断参考上下文 + 回复风格参考上下文”的双层知识增强结构，而不是纯 Prompt 驱动的对话机器人。
 
 ### 7.2 可解释性 Trace
 
@@ -380,11 +385,10 @@ flowchart LR
 
 ### 9.1 当前验证结果
 
-截至本次仓库更新时，仓库实测结果如下：
+截至当前仓库代码状态，测试资产规模如下：
 
-- Pytest 自动化测试总数：124
-- 测试结果：124 收集，关键 TTS / WebSocket / 节点回归已通过
-- 前端 `node:test` 逻辑用例：19 通过
+- 后端 pytest 测试函数：128
+- 前端 `node:test` 逻辑用例：23
 
 测试覆盖内容已包括：
 
@@ -397,6 +401,7 @@ flowchart LR
 - 集中 prompt 管理与节点 prompt builder 接入
 - `emotion2vec` 服务的关闭、缺失、成功、异常等分支
 - `qwen-tts-latest` 非流式 URL 下载、SSE 流式分片、重试与回退分支
+- `peer_support_retriever` 的启用、关闭与异常降级分支
 - WebSocket `final.trace` 中 emotion2vec 状态暴露
 - 语音 transcript 片段分发与空消息保护
 - 前端流式 assistant 收尾、语音 transcript 去重，以及流式 PCM 音频的浏览器播放适配
@@ -530,17 +535,17 @@ flowchart LR
 
 | 项目 | 当前状态 |
 |------|---------|
-| 后端框架 | FastAPI + LangGraph + LangChain |
+| 后端框架 | FastAPI + LangGraph + LiteLLM |
 | 前端框架 | React + Vite + TailwindCSS |
-| 图节点数量 | 8 个核心节点 |
+| 图节点数量 | 9 个核心节点 |
 | 输入接口 | `/chat`、`/ws/chat/{session_id}`、`/ws/voice-chat/{session_id}` |
 | 会话恢复 | `memory` / `file` checkpointer |
-| RAG | 支持 RAGFlow，可降级 |
+| RAG | 支持风险案例检索与同辈话术检索，两条链路均可降级 |
 | 语音增强 | 支持可选 `emotion2vec_plus_large` |
 | 面部能力 | 纯本地端侧 MediaPipe FACS 提取，后端基于降噪滑动窗口进行特征关联判断 |
 | 视频通话 / TTS | 支持视频通话模式、语音输入回合自动播报，以及基于 `qwen-tts-latest` 的流式语音回放 |
 | 高风险闭环 | 强制进入转介与 webhook 告警 |
-| 自动化测试 | 124 个 Pytest 用例已收集并通过关键回归，另有 19 个前端 `node:test` 用例 |
+| 自动化测试 | 当前仓库测试目录中已包含 128 个后端 pytest 测试函数，另有 23 个前端 `node:test` 用例 |
 
 ## 附录 B：建议使用方式
 

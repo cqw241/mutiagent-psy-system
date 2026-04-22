@@ -2,16 +2,17 @@
 
 这是一个面向高校心理风险早期识别与规范转介的多智能体系统原型。当前版本已经全面升级为**多智能体（Multi-Agent）并行架构**，具备真实的 Fan-out/Fan-in 图拓扑，实现了文本、语音、端侧面部特征的并行分析与条件路由流转，同时提供标准聊天与视频通话两种交互模式。系统目标是辅助风险识别与流程转介，绝不替代专业心理咨询或医疗诊断。
 
-当前建议把它视为“**可联调、可验证、可继续硬化的试点前版本**”。若要进入校内试点，建议先阅读 [Pilot MVP Contract](docs/pilot-mvp.md) 并完成持久化、审计和 CI 基建。
+当前建议把它视为“**可联调、可验证、可继续硬化的试点前版本**”。若要进入校内试点，建议先参考 [Project Hardening And Pilot Readiness Implementation Plan](docs/plans/2026-03-23-project-hardening-roadmap.md) 并优先完成持久化、审计和 CI 基建。
 
 ## 当前已完成核心特性
 
 ### 1. 多智能体架构 (Multi-Agent Graph)
-重构了早期的线性流水线，当前 LangGraph 拓扑包含 8 个独立节点，实现了彻底的解耦：
+重构了早期的线性流水线，当前 LangGraph 拓扑包含 9 个独立节点，实现了彻底的解耦：
 - **Modality Fan-out**: `modality_router` 会根据输入模态自动并行触发 `text_analyzer`、`voice_analyzer` 和 `face_analyzer`。
 - **Signal Fan-in**: `signal_aggregator` 汇集多模态分析结果。
 - **RAG & Risk**: 融合历史相似案例后交由 `risk_assessor` 评估当前风险分数。
 - **Conditional Referral**: 依据风险等级通过 `risk_router` 决定是否触发独立的 `referral_agent`。
+- **Peer Support Style Alignment**: `peer_support_retriever` 可按需检索同辈倾听话术样例，为最终回复做风格对齐。
 - **Response**: `response_generator` 生成温暖、同理心的回复。
 
 精简版核心图如下，统一源文件见 [core-architecture-mermaid.md](docs/diagrams/core-architecture-mermaid.md)：
@@ -29,8 +30,9 @@ flowchart LR
     RAG --> Risk[risk_assessor]
     Risk --> Decision{risk_router}
     Decision -->|high| Referral[referral_agent]
-    Decision -->|low / medium| Response[response_generator]
-    Referral --> Response
+    Decision -->|low / medium| Peer[peer_support_retriever]
+    Referral --> Peer
+    Peer --> Response[response_generator]
     Response --> End([END])
 ```
 
@@ -43,10 +45,11 @@ flowchart LR
 - **状态可观测**: 前端 `TracePanel` 现可直接查看 emotion2vec 当前状态、标签、置信度、模型目录和错误信息，便于联调与排障。
 - **强制可降级**: 当 `emotion2vec` 关闭、模型目录缺失、依赖不完整或推理失败时，节点会返回 `disabled` / `unavailable` / `error` 状态并自动回退到旧逻辑，不会破坏既有语音分析结果。
 
-### 3. 会话记忆与 RAG
+### 3. 会话记忆与双层 RAG
 - LangGraph `MemorySaver` 进程内会话记忆与历史上下文维持。
 - 新增内置 `file` checkpointer，可在单机环境下实现进程重启后的会话恢复；`memory` 仍作为开发/测试默认值。
 - RAGFlow 外部相似案例库检索支持（挂载于 `rag_retriever` 独立节点）。
+- 新增可选 `peer_support_retriever` 节点，可检索同辈倾听话术样例并写入 `peer_support_context`，供 `response_generator` 做风格对齐。
 - 高风险评估时可结合历史相似案例提升判断合理性，外部依赖失败时支持平滑降级。
 
 ### 4. 端侧面部表情提取 (Edge AI Face Analysis)
@@ -68,7 +71,7 @@ flowchart LR
 - 所有重复状态访问和组装提取到 `app/utils/state_helpers.py`（符合 DRY 原则）。
 - LLM 节点的系统提示词与 user prompt builder 已集中收敛到 `app/prompts/`，当前主流程 4 个节点与兼容旧节点 `information_extractor` 统一复用，便于后续维护、审查与版本化。
 - 为高并发场景添加了 LangGraph 的安全并发写策略（自定义 `merge_dicts` reducer 解决 `agent_judgments` 写入竞争）。
-- **自动化测试保障**：当前共收集 124 个 pytest 用例，覆盖路由器规则、各个独立 Node 回退链路、集中 prompt 管理、emotion2vec service 降级路径、WebSocket / Voice WS 事件契约、物理/MFCC 音频特征提取、Qwen 流式 TTS 回退与重试、FACS 面部置信度聚合处理以及整个 Graph 整合运行；前端另有 19 个 `node:test` 纯逻辑回归用例覆盖 typewriter、语音 transcript 去重、语音回合自动播报以及 PCM/WAV 播放适配逻辑。
+- **自动化测试保障**：当前仓库测试目录中已包含 128 个后端 pytest 测试函数，覆盖路由器规则、各个独立 Node 回退链路、集中 prompt 管理、emotion2vec service 降级路径、WebSocket / Voice WS 事件契约、物理/MFCC 音频特征提取、Qwen 流式 TTS 回退与重试、FACS 面部置信度聚合处理、同辈支持检索节点以及整个 Graph 整合运行；前端另有 23 个 `node:test` 纯逻辑用例覆盖 typewriter、语音 transcript 去重、语音回合自动播报以及 PCM/WAV 播放适配逻辑。
 
 ---
 
@@ -80,7 +83,7 @@ app/
   core/config.py           # 环境变量与应用配置
   graph/                   # LangGraph 定义：state.py, routers.py, workflow.py
   models/                  # 接口输入输出 Schema
-  nodes/                   # 8大独立 Agent 节点定义
+  nodes/                   # 9大独立 Agent 节点定义
   prompts/                 # LLM 节点提示词常量与 user prompt builder
   rag/                     # 检索增强逻辑
   services/                # 服务层：LLM, 告警, ASR, 声学特征(acoustic_feature_service)
@@ -104,6 +107,7 @@ pip install -r requirements.txt
 - `LLM_API_KEY`
 - `COUNSELOR_ALERT_WEBHOOK`
 - `ENABLE_RAG` (设为 `false` 可在无 RAG 时本地测试纯 Agent 流转)
+- `ENABLE_PEER_SUPPORT_RAG`、`RAGFLOW_PEER_SUPPORT_DATASET_ID`（控制同辈倾听话术检索开关与知识库）
 - `CHECKPOINT_BACKEND` (`memory` / `file`，更高阶的 `postgres` / `redis` 预留给外部 saver 扩展)
 - `CHECKPOINT_DIR` (当 `CHECKPOINT_BACKEND=file` 时生效)
 - `TTS_ENABLED`、`TTS_PROVIDER`、`TTS_API_KEY`、`TTS_MODEL`、`TTS_BASE_URL`、`TTS_TIMEOUT_SECONDS`（当前默认推荐 `dashscope + qwen-tts-latest` 流式 TTS）
@@ -152,9 +156,9 @@ npm run dev -- --host 0.0.0.0
 项目当前同时维护后端 Pytest 与前端 `node:test` 级别的纯逻辑回归。开发或重构后，建议至少运行：
 ```bash
 conda run -n llm_env python -m pytest -q --tb=short
-node --test frontend/src/hooks/useTTSPlaybackQueue.helpers.test.js frontend/src/hooks/useChatAgent.helpers.test.js frontend/src/hooks/useAudioStream.helpers.test.js
+node --test frontend/src/lib/typewriterStream.test.js frontend/src/hooks/useTTSPlaybackQueue.helpers.test.js frontend/src/hooks/useChatAgent.helpers.test.js frontend/src/hooks/useAudioStream.helpers.test.js
 ```
-> 当前后端共收集 124 个 pytest 用例；前端补充 19 个 `node:test` 用例，覆盖语音 transcript 去重、语音回合自动播报、流式 assistant 收尾，以及流式 PCM 音频播放适配。
+> 当前仓库测试目录中已包含 128 个后端 pytest 测试函数；前端补充 23 个 `node:test` 用例，覆盖 typewriter、语音 transcript 去重、语音回合自动播报、流式 assistant 收尾，以及流式 PCM 音频播放适配。
 
 ---
 

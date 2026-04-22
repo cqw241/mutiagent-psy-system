@@ -76,8 +76,17 @@ def build_risk_assessor_prompts(
     return system_prompt, user_prompt
 
 
-def build_response_generator_system_prompt() -> str:
-    return RESPONSE_GENERATOR_SYSTEM_PROMPT
+def build_response_generator_system_prompt(peer_support_context: str = "") -> str:
+    base_prompt = RESPONSE_GENERATOR_SYSTEM_PROMPT
+    if peer_support_context:
+        base_prompt += (
+            "\n\n<Peer_Support_Examples>\n"
+            f"{peer_support_context}\n"
+            "</Peer_Support_Examples>\n"
+            "请将以上系统检索到的往期同辈优秀沟通样例作为风格对齐参照，"
+            "用相似的同情心、验证感和非评判语气进行陪伴回复。"
+        )
+    return base_prompt
 
 
 def build_response_generator_user_prompt(risk_level: str, latest_text: str) -> str:

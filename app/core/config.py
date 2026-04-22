@@ -126,6 +126,12 @@ class Settings:
         default_factory=lambda: _env_int("RAGFLOW_TIMEOUT_SECONDS", 10)
     )
     enable_rag: bool = field(default_factory=lambda: _env_bool("ENABLE_RAG", False))
+    enable_peer_support_rag: bool = field(
+        default_factory=lambda: _env_bool("ENABLE_PEER_SUPPORT_RAG", False)
+    )
+    ragflow_peer_support_dataset_id: str = field(
+        default_factory=lambda: _env_str("RAGFLOW_PEER_SUPPORT_DATASET_ID", "")
+    )
 
     checkpoint_backend: str = field(
         default_factory=lambda: _env_str("CHECKPOINT_BACKEND", "memory").lower()

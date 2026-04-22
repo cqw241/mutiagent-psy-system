@@ -1076,7 +1076,7 @@ def test_response_generator_uses_centralized_prompt_builders(monkeypatch):
     llm = DummyStreamingLLM()
     monkeypatch.setattr(
         "app.nodes.response_generator.build_response_generator_system_prompt",
-        lambda: "response-system-sentinel",
+        lambda _peer_support_context="": "response-system-sentinel",
         raising=False,
     )
     monkeypatch.setattr(

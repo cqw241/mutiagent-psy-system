@@ -26,8 +26,9 @@ flowchart LR
     RAG --> Risk[risk_assessor]
     Risk --> Decision{risk_router}
     Decision -->|high| Referral[referral_agent]
-    Decision -->|low / medium| Response[response_generator]
-    Referral --> Response
+    Decision -->|low / medium| Peer[peer_support_retriever]
+    Referral --> Peer
+    Peer --> Response[response_generator]
     Response --> End([END])
 ```
 
@@ -74,6 +75,7 @@ flowchart LR
         Risk["risk_assessor"]
         Decision{"risk_router"}
         Referral["referral_agent"]
+        Peer["peer_support_retriever"]
         Response["response_generator"]
     end
 
@@ -123,9 +125,11 @@ flowchart LR
     RAG --> Risk
     Risk --> Decision
     Decision -->|high| Referral
-    Decision -->|low / medium| Response
+    Decision -->|low / medium| Peer
     Referral --> Alert
-    Referral --> Response
+    Referral --> Peer
+    Peer -.检索.-> RagStore
+    Peer --> Response
 
     Voice -.深度 SER.-> E2V
     Response --> Reply

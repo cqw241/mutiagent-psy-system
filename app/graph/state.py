@@ -65,6 +65,7 @@ class PsychologyGraphState(TypedDict, total=False):
 
     # ── RAG ──
     reference_context: str
+    peer_support_context: str
 
     # ── 风险评估 ──
     current_risk_score: float

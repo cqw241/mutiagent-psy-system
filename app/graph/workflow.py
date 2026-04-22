@@ -15,8 +15,8 @@
       → rag_retriever
       → risk_assessor
       → risk_router (conditional edge)
-        ├→ referral_agent → response_generator → END
-        └→ response_generator → END
+        ├→ referral_agent → peer_support_retriever → response_generator → END
+        └→ peer_support_retriever → response_generator → END
 """
 
 from __future__ import annotations
@@ -25,6 +25,7 @@ from app.core.config import get_settings
 from app.graph.routers import modality_router, risk_router
 from app.graph.state import PsychologyGraphState
 from app.nodes.face_analyzer import face_analyzer_node
+from app.nodes.peer_support_retriever import peer_support_retriever_node
 from app.nodes.rag_retriever import rag_retriever_node
 from app.nodes.referral_agent import referral_agent_node
 from app.nodes.response_generator import response_generator_node
@@ -50,6 +51,7 @@ def build_graph(checkpointer: BaseCheckpointSaver | None = None):
     graph_builder.add_node("rag_retriever", rag_retriever_node)
     graph_builder.add_node("risk_assessor", risk_assessor_node)
     graph_builder.add_node("referral_agent", referral_agent_node)
+    graph_builder.add_node("peer_support_retriever", peer_support_retriever_node)
     graph_builder.add_node("response_generator", response_generator_node)
 
     # ── Fan-out：START → 模态路由 → 各 Analyzer ──
@@ -68,20 +70,21 @@ def build_graph(checkpointer: BaseCheckpointSaver | None = None):
     graph_builder.add_edge("signal_aggregator", "rag_retriever")
     graph_builder.add_edge("rag_retriever", "risk_assessor")
 
-    # ── 条件分支：risk_assessor → referral_agent 或 response_generator ──
+    # ── 条件分支：risk_assessor → referral_agent 或 peer_support_retriever ──
     graph_builder.add_conditional_edges(
         "risk_assessor",
         risk_router,
         {
             "referral_agent": "referral_agent",
-            "response_generator": "response_generator",
+            "response_generator": "peer_support_retriever",
         },
     )
 
-    # ── referral_agent 完成后也进入 response_generator ──
-    graph_builder.add_edge("referral_agent", "response_generator")
+    # ── referral_agent 完成后也进入 peer_support_retriever ──
+    graph_builder.add_edge("referral_agent", "peer_support_retriever")
 
-    # ── 最终出口 ──
+    # ── peer_support_retriever → response_generator → END ──
+    graph_builder.add_edge("peer_support_retriever", "response_generator")
     graph_builder.add_edge("response_generator", END)
 
     resolved_checkpointer = checkpointer or create_checkpointer(get_settings())
