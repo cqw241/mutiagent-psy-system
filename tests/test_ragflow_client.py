@@ -12,6 +12,7 @@ def test_retrieve_similar_cases_returns_joined_content():
         payload = json.loads(request.content.decode("utf-8"))
         assert payload["knowledge_id"]
         assert payload["query"] == "用户最近持续失眠"
+        assert payload["metadata_condition"] is None
         return httpx.Response(
             200,
             json={

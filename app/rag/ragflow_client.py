@@ -52,6 +52,7 @@ class RagFlowClient:
         payload = {
             "knowledge_id": self.dataset_id,
             "query": query,
+            "metadata_condition": None,
             "retrieval_setting": {
                 "top_k": top_k,
                 "score_threshold": 0.0,
