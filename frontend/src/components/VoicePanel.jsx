@@ -1,5 +1,5 @@
 import { MicIcon, WaveIcon } from './Icons'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion as Motion, AnimatePresence } from 'framer-motion'
 
 function formatVoiceState(connectionState, isRecording) {
     if (isRecording) {
@@ -41,7 +41,7 @@ export default function VoicePanel({ voiceStream, handleVoiceToggle, ttsPlayback
 
     return (
         <div className="mb-4 grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
-            <motion.div
+            <Motion.div
                 initial={{ opacity: 0, x: -20 }}
                 animate={{ opacity: 1, x: 0 }}
                 className="rounded-[30px] border border-[#e7dacc] bg-[linear-gradient(145deg,#fffaf4_0%,#f3ebdf_100%)] p-5 shadow-[0_16px_40px_rgba(130,111,88,0.08)]"
@@ -88,9 +88,9 @@ export default function VoicePanel({ voiceStream, handleVoiceToggle, ttsPlayback
                         {playbackError}
                     </p>
                 ) : null}
-            </motion.div>
+            </Motion.div>
 
-            <motion.div
+            <Motion.div
                 initial={{ opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
                 className="flex flex-col rounded-[30px] border border-[#d9dcca] bg-[linear-gradient(145deg,#eef3ea_0%,#fbf7f1_100%)] p-5 shadow-[0_16px_40px_rgba(122,135,112,0.08)]"
@@ -101,7 +101,7 @@ export default function VoicePanel({ voiceStream, handleVoiceToggle, ttsPlayback
                 </div>
                 <div className="mt-4 flex-1 rounded-[24px] bg-white/60 p-4 text-[15px] leading-7 text-stone-700 shadow-inner backdrop-blur-sm">
                     <AnimatePresence mode="wait">
-                        <motion.p
+                        <Motion.p
                             key={voiceStream.liveTranscript || 'empty'}
                             initial={{ opacity: 0, y: 5 }}
                             animate={{ opacity: 1, y: 0 }}
@@ -111,10 +111,10 @@ export default function VoicePanel({ voiceStream, handleVoiceToggle, ttsPlayback
                             {voiceStream.liveTranscript || (
                                 <span className="text-stone-400 italic">说完一句后，这里会出现本轮语音识别结果...</span>
                             )}
-                        </motion.p>
+                        </Motion.p>
                     </AnimatePresence>
                 </div>
-            </motion.div>
+            </Motion.div>
         </div>
     )
 }

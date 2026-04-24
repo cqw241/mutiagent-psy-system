@@ -1,4 +1,4 @@
-import { motion } from 'framer-motion'
+import { motion as Motion } from 'framer-motion'
 
 import { CameraIcon, CameraOffIcon, PhoneOffIcon, WaveIcon } from './Icons'
 import TypewriterText from './TypewriterText'
@@ -85,14 +85,20 @@ export default function VideoCallPanel({
   onAssistantTypingDone,
   stageLabel,
   voiceStream,
-  faceAnalysis,
+  faceCameraError,
+  faceVideoRef,
+  isFaceActive,
+  isFaceCameraReady,
   onToggleCamera,
   onEndCall,
   ttsPlayback,
 }) {
   const transcriptMessages = messages.slice(-8)
-  const shouldShowCameraPreview = faceAnalysis.isActive && faceAnalysis.isCameraReady
-  const shouldMountCameraVideo = shouldMountLocalCameraVideo(faceAnalysis)
+  const shouldShowCameraPreview = isFaceActive && isFaceCameraReady
+  const shouldMountCameraVideo = shouldMountLocalCameraVideo({
+    isActive: isFaceActive,
+    isCameraReady: isFaceCameraReady,
+  })
 
   return (
     <section className="relative min-h-[78vh] overflow-hidden rounded-[38px] border border-white/70 bg-[linear-gradient(135deg,rgba(255,250,244,0.98)_0%,rgba(246,239,229,0.96)_52%,rgba(235,243,235,0.96)_100%)] shadow-[0_30px_90px_rgba(118,99,79,0.14)]">
@@ -127,7 +133,7 @@ export default function VideoCallPanel({
           </div>
         </div>
 
-        <motion.div
+        <Motion.div
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
           className="mt-8 flex-1 overflow-hidden rounded-[32px] border border-white/65 bg-white/48 p-4 shadow-inner backdrop-blur md:p-6"
@@ -151,7 +157,7 @@ export default function VideoCallPanel({
               />
             ))}
           </div>
-        </motion.div>
+        </Motion.div>
 
         <div className="pointer-events-none absolute right-6 top-6 w-[210px] md:right-8 md:top-8 md:w-[228px]">
           <div className="pointer-events-auto overflow-hidden rounded-[30px] border border-white/70 bg-[#f7efe5]/82 p-3 shadow-[0_24px_54px_rgba(118,99,79,0.18)] backdrop-blur">
@@ -159,7 +165,7 @@ export default function VideoCallPanel({
               <div>
                 <p className="text-[11px] uppercase tracking-[0.28em] text-stone-400">Local Camera</p>
                 <p className="mt-1 text-sm font-medium text-stone-700">
-                  {faceAnalysis.isActive && faceAnalysis.isCameraReady ? '本地摄像头在线' : '摄像头已关闭'}
+                  {isFaceActive && isFaceCameraReady ? '本地摄像头在线' : '摄像头已关闭'}
                 </p>
               </div>
               <span className="rounded-full bg-white/80 px-2.5 py-1 text-[11px] text-stone-500">
@@ -170,7 +176,7 @@ export default function VideoCallPanel({
             <div className="relative aspect-[3/4] w-full overflow-hidden rounded-[24px]">
               {shouldMountCameraVideo ? (
                 <video
-                  ref={faceAnalysis.videoRef}
+                  ref={faceVideoRef}
                   className={`h-full w-full object-cover shadow-[0_18px_28px_rgba(118,99,79,0.14)] transition-opacity duration-300 ${
                     shouldShowCameraPreview ? 'opacity-100' : 'opacity-0'
                   }`}
@@ -187,9 +193,9 @@ export default function VideoCallPanel({
               ) : null}
             </div>
 
-            {faceAnalysis.cameraError ? (
+            {faceCameraError ? (
               <p className="mt-3 rounded-2xl border border-rose-100 bg-rose-50 px-3 py-2 text-xs leading-5 text-rose-700">
-                {faceAnalysis.cameraError}
+                {faceCameraError}
               </p>
             ) : null}
             {ttsPlayback.playbackError ? (
@@ -203,10 +209,10 @@ export default function VideoCallPanel({
         <div className="mt-8 flex justify-center">
           <div className="flex items-center gap-5 rounded-full border border-white/70 bg-white/58 px-5 py-4 shadow-[0_18px_40px_rgba(118,99,79,0.14)] backdrop-blur">
             <CallControlButton
-              label={faceAnalysis.isActive ? '关闭镜头' : '打开镜头'}
+              label={isFaceActive ? '关闭镜头' : '打开镜头'}
               onClick={onToggleCamera}
               icon={
-                faceAnalysis.isActive
+                isFaceActive
                   ? <CameraOffIcon className="h-6 w-6" />
                   : <CameraIcon className="h-6 w-6" />
               }

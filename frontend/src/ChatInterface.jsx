@@ -91,7 +91,10 @@ export default function ChatInterface() {
               onAssistantTypingDone={handleAssistantTypingDone}
               stageLabel={stageLabel}
               voiceStream={voiceStream}
-              faceAnalysis={faceAnalysis}
+              faceCameraError={faceAnalysis.cameraError}
+              faceVideoRef={faceAnalysis.videoRef}
+              isFaceActive={faceAnalysis.isActive}
+              isFaceCameraReady={faceAnalysis.isCameraReady}
               onToggleCamera={handleToggleVideoCamera}
               onEndCall={handleEndVideoCall}
               ttsPlayback={ttsPlayback}
@@ -108,7 +111,13 @@ export default function ChatInterface() {
                 ttsPlayback={ttsPlayback}
               />
 
-              <FaceToggle faceAnalysis={faceAnalysis} />
+              <FaceToggle
+                cameraError={faceAnalysis.cameraError}
+                isActive={faceAnalysis.isActive}
+                isCameraReady={faceAnalysis.isCameraReady}
+                onToggle={faceAnalysis.toggle}
+                videoRef={faceAnalysis.videoRef}
+              />
 
               <MessageList
                 messages={messages}

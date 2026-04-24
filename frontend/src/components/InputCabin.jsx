@@ -1,9 +1,9 @@
 import { SendIcon } from './Icons'
-import { motion } from 'framer-motion'
+import { motion as Motion } from 'framer-motion'
 
 export default function InputCabin({ input, setInput, handleSubmit }) {
     return (
-        <motion.form
+        <Motion.form
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.2 }}
@@ -32,6 +32,6 @@ export default function InputCabin({ input, setInput, handleSubmit }) {
                     <SendIcon />
                 </button>
             </div>
-        </motion.form>
+        </Motion.form>
     )
 }

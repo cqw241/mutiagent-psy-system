@@ -12,11 +12,6 @@ export default function TypewriterText({ text, active, onDone }) {
     }, [onDone])
 
     useEffect(() => {
-        doneRef.current = false
-        setVisibleCount(active ? 0 : characters.length)
-    }, [active, characters.length, text])
-
-    useEffect(() => {
         if (!active) {
             return
         }

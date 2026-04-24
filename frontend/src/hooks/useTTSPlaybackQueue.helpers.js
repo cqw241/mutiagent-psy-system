@@ -205,7 +205,9 @@ export function createUnlockedAudioPlayer({
     audio.onerror = null
     try {
       audio.currentTime = 0
-    } catch {}
+    } catch {
+      // Some browser audio implementations reject resetting currentTime before metadata loads.
+    }
   }
 
   return {
@@ -220,7 +222,9 @@ export function createUnlockedAudioPlayer({
         player.pause?.()
         try {
           player.currentTime = 0
-        } catch {}
+        } catch {
+          // Resetting a silent priming source is best-effort only.
+        }
         player.muted = false
         isPrimed = true
         return true

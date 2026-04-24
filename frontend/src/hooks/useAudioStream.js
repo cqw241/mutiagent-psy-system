@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   buildVoiceControlPayload,
   shouldSendVoiceCommit,
@@ -123,19 +123,7 @@ export function useAudioStream({
     }
   }, [multimodalFeatures, userProfile])
 
-  useEffect(() => {
-    return () => {
-      shutdownAudioGraph()
-
-      const socket = socketRef.current
-      if (socket) {
-        socket.close()
-        socketRef.current = null
-      }
-    }
-  }, [])
-
-  function shutdownAudioGraph() {
+  const shutdownAudioGraph = useCallback(() => {
     const processorNode = processorNodeRef.current
     if (processorNode) {
       processorNode.onaudioprocess = null
@@ -168,7 +156,19 @@ export function useAudioStream({
     }
 
     setAudioLevel(0)
-  }
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      shutdownAudioGraph()
+
+      const socket = socketRef.current
+      if (socket) {
+        socket.close()
+        socketRef.current = null
+      }
+    }
+  }, [shutdownAudioGraph])
 
   async function ensureSocketConnection() {
     const existingSocket = socketRef.current

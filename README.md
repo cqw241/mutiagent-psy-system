@@ -50,6 +50,8 @@ flowchart LR
 - 新增内置 `file` checkpointer，可在单机环境下实现进程重启后的会话恢复；`memory` 仍作为开发/测试默认值。
 - RAGFlow 外部相似案例库检索支持（挂载于 `rag_retriever` 独立节点）。
 - 新增可选 `peer_support_retriever` 节点，可检索同辈倾听话术样例并写入 `peer_support_context`，供 `response_generator` 做风格对齐。
+- 已补充本地 BGE-M3 embedding 联调脚本，可通过 OpenAI-compatible `/v1/embeddings` 接口接入 RAGFlow 的 LocalAI embedding 配置。
+- RAGFlow Dify-compatible retrieval 请求会显式传入 `metadata_condition: null`，避免 RAGFlow 将空 metadata 条件误解释为过滤全部文档。
 - 高风险评估时可结合历史相似案例提升判断合理性，外部依赖失败时支持平滑降级。
 
 ### 4. 端侧面部表情提取 (Edge AI Face Analysis)
@@ -67,13 +69,13 @@ flowchart LR
 - 语音 WebSocket 会先发送 `transcript` 事件，再进入 `stage` / `token` / `final` / `end` 回复链路；文本 WebSocket 则直接进入流式回复链路。
 - 高风险会话不再通过冰冷模板提示，改为 `referral_agent` 输出极具同理心的温暖过渡语，并组装热线求助卡片。
 - 对辅导员/后台同时提供脱敏后的同步调度状态与异步 Webhook 投递能力，便于校内值班系统对接。
-- 发送给前端的 `trace` 包含解释性字段、风险校准、各 Agent 的内部判断、emotion2vec 状态摘要，以及最新面部辅助观察结果。
+- 发送给前端的 `trace` 包含解释性字段、风险校准、各 Agent 的内部判断、emotion2vec 状态摘要、RAG 检索命中状态，以及最新面部辅助观察结果。
 
 ### 6. 健壮的工程设施
 - 所有重复状态访问和组装提取到 `app/utils/state_helpers.py`（符合 DRY 原则）。
 - LLM 节点的系统提示词与 user prompt builder 已集中收敛到 `app/prompts/`，当前主流程 4 个节点与兼容旧节点 `information_extractor` 统一复用，便于后续维护、审查与版本化。
 - 为高并发场景添加了 LangGraph 的安全并发写策略（自定义 `merge_dicts` reducer 解决 `agent_judgments` 写入竞争）。
-- **自动化测试保障**：当前仓库测试目录中已包含 130 个后端 pytest 测试函数，覆盖路由器规则、各个独立 Node 回退链路、集中 prompt 管理、emotion2vec service 降级路径、WebSocket / Voice WS 事件契约、物理/MFCC 音频特征提取、Qwen 流式 TTS 回退与重试、DashScope 代理绕过、FACS 面部置信度聚合处理、同辈支持检索节点以及整个 Graph 整合运行；前端另有 25 个 `node:test` 纯逻辑用例覆盖 typewriter、语音 transcript 去重、语音回合自动播报、视频通话自动播报、摄像头预览挂载以及 PCM/WAV 播放适配逻辑。
+- **自动化测试保障**：当前仓库测试目录中已包含 130 个后端 pytest 测试函数，覆盖路由器规则、各个独立 Node 回退链路、集中 prompt 管理、emotion2vec service 降级路径、WebSocket / Voice WS 事件契约、物理/MFCC 音频特征提取、Qwen 流式 TTS 回退与重试、DashScope 代理绕过、FACS 面部置信度聚合处理、同辈支持检索节点以及整个 Graph 整合运行；前端另有 26 个 `node:test` 纯逻辑用例覆盖 typewriter、语音 transcript 去重、语音回合自动播报、视频通话自动播报、摄像头预览挂载、RAG 检索状态展示，以及 PCM/WAV 播放适配逻辑。
 
 ---
 
@@ -109,6 +111,7 @@ pip install -r requirements.txt
 - `LLM_API_KEY`
 - `COUNSELOR_ALERT_WEBHOOK`
 - `ENABLE_RAG` (设为 `false` 可在无 RAG 时本地测试纯 Agent 流转)
+- `RAGFLOW_BASE_URL`、`RAGFLOW_API_KEY`、`RAGFLOW_DATASET_ID`（控制 RAGFlow 主知识库检索）
 - `ENABLE_PEER_SUPPORT_RAG`、`RAGFLOW_PEER_SUPPORT_DATASET_ID`（控制同辈倾听话术检索开关与知识库）
 - `CHECKPOINT_BACKEND` (`memory` / `file`，更高阶的 `postgres` / `redis` 预留给外部 saver 扩展)
 - `CHECKPOINT_DIR` (当 `CHECKPOINT_BACKEND=file` 时生效)
@@ -135,6 +138,35 @@ pip install -r requirements.txt
 若本地模型目录不存在、依赖缺失或推理失败，系统会继续沿用原有传统声学特征链路，仅把 `voice_signals["emotion2vec_reading"]` 标记为 `unavailable` 或 `error`。
 当前版本同时会把该状态同步写入前端可见的 `trace.emotion2vec` 字段，用于联调确认本地推理是否真正生效。
 
+### 本地 BGE-M3 embedding 服务（RAGFlow LocalAI 联调）
+
+如果 RAGFlow 的云端 embedding key 不可用，或需要完全本地化检索向量化，可先启动仓库内置的 OpenAI-compatible embedding 服务：
+
+```bash
+python scripts/bge_m3_embedding_server.py \
+  --model-path /media/chai/Data/Linux_AI_Resources/modelscope/hub/models/BAAI/bge-m3 \
+  --host 0.0.0.0 \
+  --port 8001
+```
+
+健康检查：
+
+```bash
+curl -s http://127.0.0.1:8001/health
+```
+
+如果 RAGFlow 运行在 `docker_ragflow` 网络中，RAGFlow UI 的 LocalAI embedding 配置建议为：
+
+```text
+Model type: embedding
+Model name: /app/models/bge-m3
+Base url: http://172.18.0.1:8001
+API-Key: 留空
+Max Tokens: 8192
+```
+
+切换 embedding 模型后应新建测试知识库或重新解析原知识库，避免旧向量空间与新 embedding 模型不一致。
+
 ## 启动服务
 
 ### 后端 API (FastAPI)
@@ -160,7 +192,7 @@ npm run dev -- --host 0.0.0.0
 conda run -n llm_env python -m pytest -q --tb=short
 node --test frontend/src/lib/typewriterStream.test.js frontend/src/hooks/useTTSPlaybackQueue.helpers.test.js frontend/src/hooks/useChatAgent.helpers.test.js frontend/src/hooks/useAudioStream.helpers.test.js
 ```
-> 当前仓库测试目录中已包含 130 个后端 pytest 测试函数；前端补充 25 个 `node:test` 用例，覆盖 typewriter、语音 transcript 去重、语音回合自动播报、视频通话自动播报、摄像头预览挂载、流式 assistant 收尾，以及流式 PCM 音频播放适配。
+> 当前仓库测试目录中已包含 130 个后端 pytest 测试函数；前端补充 26 个 `node:test` 用例，覆盖 typewriter、语音 transcript 去重、语音回合自动播报、视频通话自动播报、摄像头预览挂载、RAG 检索状态展示、流式 assistant 收尾，以及流式 PCM 音频播放适配。
 
 ---
 

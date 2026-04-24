@@ -1,4 +1,4 @@
-import { motion } from 'framer-motion'
+import { motion as Motion } from 'framer-motion'
 import TypewriterText from './TypewriterText'
 
 export default function MessageList({ messages, onAssistantTypingDone }) {
@@ -7,7 +7,7 @@ export default function MessageList({ messages, onAssistantTypingDone }) {
             {messages.map((message) => {
                 if (message.role === 'support') {
                     return (
-                        <motion.div
+                        <Motion.div
                             initial={{ opacity: 0, y: 10, scale: 0.95 }}
                             animate={{ opacity: 1, y: 0, scale: 1 }}
                             transition={{ duration: 0.4, ease: 'easeOut' }}
@@ -25,14 +25,14 @@ export default function MessageList({ messages, onAssistantTypingDone }) {
                                     </li>
                                 ))}
                             </ul>
-                        </motion.div>
+                        </Motion.div>
                     )
                 }
 
                 const isUser = message.role === 'user'
                 const isTypingAssistantReply = message.role === 'assistant' && message.typing
                 return (
-                    <motion.div
+                    <Motion.div
                         initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ duration: 0.3, ease: 'easeOut' }}
@@ -60,7 +60,7 @@ export default function MessageList({ messages, onAssistantTypingDone }) {
                                 ) : null}
                             </p>
                         </div>
-                    </motion.div>
+                    </Motion.div>
                 )
             })}
         </div>

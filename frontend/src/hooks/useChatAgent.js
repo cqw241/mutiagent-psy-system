@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { buildWebSocketUrl, useAudioStream } from './useAudioStream'
 import { useTTSPlaybackQueue } from './useTTSPlaybackQueue'
 import {
@@ -51,7 +51,7 @@ export function useChatAgent({
     const [stageLabel, setStageLabel] = useState('正在建立安全连接...')
     const [latestTrace, setLatestTrace] = useState(null)
 
-    const finalizeAssistantReplyNow = useCallback((finalPayload) => {
+    function finalizeAssistantReplyNow(finalPayload) {
         const replyText = finalPayload.reply || tokenBufferRef.current || ''
         const currentStreamId = currentAssistantStreamIdRef.current
 
@@ -66,9 +66,9 @@ export function useChatAgent({
         setLatestTrace(finalPayload.trace ?? null)
         tokenBufferRef.current = ''
         currentAssistantStreamIdRef.current = null
-    }, [])
+    }
 
-    const handleRealtimePayload = useCallback((payload) => {
+    function handleRealtimePayload(payload) {
         if (payload.type === 'tts_audio' || payload.type === 'tts_end') {
             ttsPlayback.handleTTSEvent(payload)
             return
@@ -131,9 +131,11 @@ export function useChatAgent({
         if (payload.type === 'error') {
             setStageLabel(payload.message ?? '连接出现波动，请稍后重试。')
         }
-    }, [finalizeAssistantReplyNow, ttsPlayback])
+    }
 
-    handlePayloadRef.current = handleRealtimePayload
+    useEffect(() => {
+        handlePayloadRef.current = handleRealtimePayload
+    })
 
     const voiceStream = useAudioStream({
         sessionId,
@@ -147,20 +149,12 @@ export function useChatAgent({
     })
 
     // Stable send function for face_segment frames over the voice WS
-    const voiceSendFn = useCallback((data) => {
+    function voiceSendFn(data) {
         const socket = voiceStream._socketRef?.current
         if (socket && socket.readyState === WebSocket.OPEN) {
             socket.send(data)
         }
-    }, [voiceStream._socketRef])
-
-    useEffect(() => {
-        if (!voiceStream.lastError) {
-            return
-        }
-
-        setStageLabel(voiceStream.lastError)
-    }, [voiceStream.lastError])
+    }
 
     useEffect(() => {
         const socket = new WebSocket(buildWebSocketUrl(`/ws/chat/${sessionId}`))
@@ -185,7 +179,7 @@ export function useChatAgent({
         }
     }, [sessionId])
 
-    const handleSubmit = useCallback((event) => {
+    function handleSubmit(event) {
         if (event) {
             event.preventDefault()
         }
@@ -223,9 +217,9 @@ export function useChatAgent({
                 user_profile: {},
             }),
         )
-    }, [callMode, input, responseAudio])
+    }
 
-    const handleVoiceToggle = useCallback(() => {
+    function handleVoiceToggle() {
         void ttsPlayback.primePlayback()
         if (voiceStream.isRecording) {
             setStageLabel('语音输入已提交，正在等待识别。')
@@ -233,11 +227,11 @@ export function useChatAgent({
             setStageLabel('请自然说话，系统会在检测到停顿后自动转写。')
         }
         voiceStream.toggleStreaming()
-    }, [ttsPlayback, voiceStream])
+    }
 
-    const handleAssistantTypingDone = useCallback((messageId) => {
+    function handleAssistantTypingDone(messageId) {
         setMessages((current) => completeAssistantTyping(current, messageId))
-    }, [])
+    }
 
     return {
         sessionId,
@@ -245,7 +239,7 @@ export function useChatAgent({
         input,
         setInput,
         connectionState,
-        stageLabel,
+        stageLabel: voiceStream.lastError || stageLabel,
         setStageLabel,
         latestTrace,
         handleSubmit,

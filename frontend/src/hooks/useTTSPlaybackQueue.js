@@ -18,18 +18,19 @@ export function useTTSPlaybackQueue({ enabled = false } = {}) {
   const isPlayingRef = useRef(false)
   const playerRef = useRef(null)
   const collectorRef = useRef(null)
+  const playNextRef = useRef(null)
 
   const [isPlaying, setIsPlaying] = useState(false)
   const [playbackError, setPlaybackError] = useState('')
 
-  function getPlayer() {
+  const getPlayer = useCallback(() => {
     if (!playerRef.current) {
       playerRef.current = createUnlockedAudioPlayer()
     }
     return playerRef.current
-  }
+  }, [])
 
-  function enqueueCompletedSegment(segment) {
+  const enqueueCompletedSegment = useCallback((segment) => {
     const byteChunks = segment.chunks.map((item) => decodeBase64Chunk(item))
     playbackQueueRef.current.push({
       sequence: segment.sequence,
@@ -39,18 +40,16 @@ export function useTTSPlaybackQueue({ enabled = false } = {}) {
     })
     playbackQueueRef.current.sort((left, right) => left.sequence - right.sequence)
     void playNextRef.current?.()
-  }
+  }, [])
 
-  function getCollector() {
+  const getCollector = useCallback(() => {
     if (!collectorRef.current) {
       collectorRef.current = createTTSSegmentCollector({
         onSegmentReady: enqueueCompletedSegment,
       })
     }
     return collectorRef.current
-  }
-
-  const playNextRef = useRef(null)
+  }, [enqueueCompletedSegment])
 
   const resetPlayback = useCallback(() => {
     playbackQueueRef.current = []
@@ -60,7 +59,7 @@ export function useTTSPlaybackQueue({ enabled = false } = {}) {
     isPlayingRef.current = false
     setIsPlaying(false)
     setPlaybackError('')
-  }, [])
+  }, [getCollector, getPlayer])
 
   const playNext = useCallback(async () => {
     if (!enabled || isPlayingRef.current) {
@@ -80,7 +79,7 @@ export function useTTSPlaybackQueue({ enabled = false } = {}) {
     const finalizePlayback = () => {
       isPlayingRef.current = false
       setIsPlaying(false)
-      void playNext()
+      void playNextRef.current?.()
     }
 
     await getPlayer().play({
@@ -95,8 +94,11 @@ export function useTTSPlaybackQueue({ enabled = false } = {}) {
       setPlaybackError('语音播放出现波动，后续语音将继续尝试。')
       finalizePlayback()
     })
-  }, [enabled])
-  playNextRef.current = playNext
+  }, [enabled, getPlayer])
+
+  useEffect(() => {
+    playNextRef.current = playNext
+  }, [playNext])
 
   const primePlayback = useCallback(async () => {
     setPlaybackError('')
@@ -105,7 +107,7 @@ export function useTTSPlaybackQueue({ enabled = false } = {}) {
     } catch {
       setPlaybackError('当前浏览器尚未允许语音播放，请再点一次麦克风后重试。')
     }
-  }, [])
+  }, [getPlayer])
 
   const handleTTSEvent = useCallback(
     (payload) => {
@@ -118,12 +120,13 @@ export function useTTSPlaybackQueue({ enabled = false } = {}) {
       }
       getCollector().handle(payload)
     },
-    [enabled],
+    [enabled, getCollector],
   )
 
   useEffect(() => {
     if (!enabled) {
-      resetPlayback()
+      const timerId = window.setTimeout(resetPlayback, 0)
+      return () => window.clearTimeout(timerId)
     }
   }, [enabled, resetPlayback])
 
@@ -132,7 +135,7 @@ export function useTTSPlaybackQueue({ enabled = false } = {}) {
       resetPlayback()
       void getPlayer().dispose()
     }
-  }, [resetPlayback])
+  }, [getPlayer, resetPlayback])
 
   return {
     handleTTSEvent,
