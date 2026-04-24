@@ -60,8 +60,10 @@ flowchart LR
 
 ### 5. 实时交互、视频通话与告警闭环
 - 支持 REST (`/chat`) 与两条 WebSocket 链路：文本流式接口 (`/ws/chat/{session_id}`) 和语音流式接口 (`/ws/voice-chat/{session_id}`)。
-- 前端提供标准聊天模式与视频通话模式：视频通话会自动拉起语音流、按需启用本地摄像头面部分析；语音输入回合会自动请求语音回复，文本输入回合默认保持文本输出。
-- 后端默认接入阿里云百炼 `qwen-tts-latest`，通过 SSE 流式返回句级音频分片；前端基于 `tts_audio` / `tts_end` 事件顺序播放，并兼容将流式 PCM 分片即时封装为浏览器可播的 WAV。
+- 前端提供标准聊天模式与视频通话模式：视频通话会自动拉起语音流、按需启用本地摄像头面部分析；语音输入回合会自动请求语音回复，视频通话中的文本和语音回合都会请求语音回复。
+- 视频通话面板会保持本地 `<video>` 节点常驻，打开镜头时可稳定绑定浏览器摄像头流并供 MediaPipe 端侧面部分析复用；摄像头关闭时清空 `srcObject`，避免残留旧流。
+- 后端默认接入阿里云百炼 `qwen3-tts-instruct-flash`，通过 SSE 流式返回句级音频分片；前端基于 `tts_audio` / `tts_end` 事件顺序播放，并兼容将流式 PCM 分片即时封装为浏览器可播的 WAV。
+- DashScope LLM/TTS 调用会绕过本机代理环境变量，避免 `HTTPS_PROXY` 等本地代理导致 `dashscope.aliyuncs.com` TLS 连接被提前断开；TTS 在 DashScope 未产出音频时保留 `edge_tts` 降级路径。
 - 语音 WebSocket 会先发送 `transcript` 事件，再进入 `stage` / `token` / `final` / `end` 回复链路；文本 WebSocket 则直接进入流式回复链路。
 - 高风险会话不再通过冰冷模板提示，改为 `referral_agent` 输出极具同理心的温暖过渡语，并组装热线求助卡片。
 - 对辅导员/后台同时提供脱敏后的同步调度状态与异步 Webhook 投递能力，便于校内值班系统对接。
@@ -71,7 +73,7 @@ flowchart LR
 - 所有重复状态访问和组装提取到 `app/utils/state_helpers.py`（符合 DRY 原则）。
 - LLM 节点的系统提示词与 user prompt builder 已集中收敛到 `app/prompts/`，当前主流程 4 个节点与兼容旧节点 `information_extractor` 统一复用，便于后续维护、审查与版本化。
 - 为高并发场景添加了 LangGraph 的安全并发写策略（自定义 `merge_dicts` reducer 解决 `agent_judgments` 写入竞争）。
-- **自动化测试保障**：当前仓库测试目录中已包含 128 个后端 pytest 测试函数，覆盖路由器规则、各个独立 Node 回退链路、集中 prompt 管理、emotion2vec service 降级路径、WebSocket / Voice WS 事件契约、物理/MFCC 音频特征提取、Qwen 流式 TTS 回退与重试、FACS 面部置信度聚合处理、同辈支持检索节点以及整个 Graph 整合运行；前端另有 23 个 `node:test` 纯逻辑用例覆盖 typewriter、语音 transcript 去重、语音回合自动播报以及 PCM/WAV 播放适配逻辑。
+- **自动化测试保障**：当前仓库测试目录中已包含 130 个后端 pytest 测试函数，覆盖路由器规则、各个独立 Node 回退链路、集中 prompt 管理、emotion2vec service 降级路径、WebSocket / Voice WS 事件契约、物理/MFCC 音频特征提取、Qwen 流式 TTS 回退与重试、DashScope 代理绕过、FACS 面部置信度聚合处理、同辈支持检索节点以及整个 Graph 整合运行；前端另有 25 个 `node:test` 纯逻辑用例覆盖 typewriter、语音 transcript 去重、语音回合自动播报、视频通话自动播报、摄像头预览挂载以及 PCM/WAV 播放适配逻辑。
 
 ---
 
@@ -110,8 +112,8 @@ pip install -r requirements.txt
 - `ENABLE_PEER_SUPPORT_RAG`、`RAGFLOW_PEER_SUPPORT_DATASET_ID`（控制同辈倾听话术检索开关与知识库）
 - `CHECKPOINT_BACKEND` (`memory` / `file`，更高阶的 `postgres` / `redis` 预留给外部 saver 扩展)
 - `CHECKPOINT_DIR` (当 `CHECKPOINT_BACKEND=file` 时生效)
-- `TTS_ENABLED`、`TTS_PROVIDER`、`TTS_API_KEY`、`TTS_MODEL`、`TTS_BASE_URL`、`TTS_TIMEOUT_SECONDS`（当前默认推荐 `dashscope + qwen-tts-latest` 流式 TTS）
-- `TTS_QWEN_VOICE`、`TTS_QWEN_LANGUAGE_TYPE`（控制百炼 Qwen TTS 的音色与语言类型）
+- `TTS_ENABLED`、`TTS_PROVIDER`、`TTS_API_KEY`、`TTS_MODEL`、`TTS_BASE_URL`、`TTS_TIMEOUT_SECONDS`（当前推荐 `dashscope + qwen3-tts-instruct-flash` 流式 TTS）
+- `TTS_QWEN_VOICE`、`TTS_QWEN_LANGUAGE_TYPE`（控制百炼 Qwen TTS 的系统音色与语言类型；当前联调使用 `Serena`，不传 instruction）
 - `TTS_VOICE`、`TTS_RATE`、`TTS_VOLUME`、`TTS_OUTPUT_FORMAT`（仅在切回 `edge_tts` provider 时使用）
 - `ENABLE_EMOTION2VEC` (默认 `true`；设为 `false` 可关闭本地 emotion2vec 辅助语音信号)
 - `EMOTION2VEC_MODEL_DIR` (指向本地模型目录，如 `/media/chai/Data/Linux_AI_Resources/modelscope/hub/models/iic/emotion2vec_plus_large`)
@@ -158,7 +160,7 @@ npm run dev -- --host 0.0.0.0
 conda run -n llm_env python -m pytest -q --tb=short
 node --test frontend/src/lib/typewriterStream.test.js frontend/src/hooks/useTTSPlaybackQueue.helpers.test.js frontend/src/hooks/useChatAgent.helpers.test.js frontend/src/hooks/useAudioStream.helpers.test.js
 ```
-> 当前仓库测试目录中已包含 128 个后端 pytest 测试函数；前端补充 23 个 `node:test` 用例，覆盖 typewriter、语音 transcript 去重、语音回合自动播报、流式 assistant 收尾，以及流式 PCM 音频播放适配。
+> 当前仓库测试目录中已包含 130 个后端 pytest 测试函数；前端补充 25 个 `node:test` 用例，覆盖 typewriter、语音 transcript 去重、语音回合自动播报、视频通话自动播报、摄像头预览挂载、流式 assistant 收尾，以及流式 PCM 音频播放适配。
 
 ---
 
