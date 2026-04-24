@@ -2,6 +2,7 @@ import { motion } from 'framer-motion'
 
 import { CameraIcon, CameraOffIcon, PhoneOffIcon, WaveIcon } from './Icons'
 import TypewriterText from './TypewriterText'
+import { shouldMountLocalCameraVideo } from './VideoCallPanel.helpers'
 
 function CallControlButton({
   label,
@@ -90,6 +91,8 @@ export default function VideoCallPanel({
   ttsPlayback,
 }) {
   const transcriptMessages = messages.slice(-8)
+  const shouldShowCameraPreview = faceAnalysis.isActive && faceAnalysis.isCameraReady
+  const shouldMountCameraVideo = shouldMountLocalCameraVideo(faceAnalysis)
 
   return (
     <section className="relative min-h-[78vh] overflow-hidden rounded-[38px] border border-white/70 bg-[linear-gradient(135deg,rgba(255,250,244,0.98)_0%,rgba(246,239,229,0.96)_52%,rgba(235,243,235,0.96)_100%)] shadow-[0_30px_90px_rgba(118,99,79,0.14)]">
@@ -164,20 +167,25 @@ export default function VideoCallPanel({
               </span>
             </div>
 
-            {faceAnalysis.isActive && faceAnalysis.isCameraReady ? (
-              <video
-                ref={faceAnalysis.videoRef}
-                className="aspect-[3/4] w-full rounded-[24px] object-cover shadow-[0_18px_28px_rgba(118,99,79,0.14)]"
-                playsInline
-                muted
-                autoPlay
-              />
-            ) : (
-              <div className="flex aspect-[3/4] w-full flex-col items-center justify-center rounded-[24px] border border-dashed border-[#d5c7b5] bg-[linear-gradient(180deg,#fff8ef_0%,#f0e6d9_100%)] px-5 text-center text-sm leading-6 text-stone-500">
-                <CameraOffIcon className="mb-3 h-8 w-8 text-stone-400" />
-                摄像头关闭时，系统只保留语音与文本链路。
-              </div>
-            )}
+            <div className="relative aspect-[3/4] w-full overflow-hidden rounded-[24px]">
+              {shouldMountCameraVideo ? (
+                <video
+                  ref={faceAnalysis.videoRef}
+                  className={`h-full w-full object-cover shadow-[0_18px_28px_rgba(118,99,79,0.14)] transition-opacity duration-300 ${
+                    shouldShowCameraPreview ? 'opacity-100' : 'opacity-0'
+                  }`}
+                  playsInline
+                  muted
+                  autoPlay
+                />
+              ) : null}
+              {!shouldShowCameraPreview ? (
+                <div className="absolute inset-0 flex flex-col items-center justify-center border border-dashed border-[#d5c7b5] bg-[linear-gradient(180deg,#fff8ef_0%,#f0e6d9_100%)] px-5 text-center text-sm leading-6 text-stone-500">
+                  <CameraOffIcon className="mb-3 h-8 w-8 text-stone-400" />
+                  摄像头关闭时，系统只保留语音与文本链路。
+                </div>
+              ) : null}
+            </div>
 
             {faceAnalysis.cameraError ? (
               <p className="mt-3 rounded-2xl border border-rose-100 bg-rose-50 px-3 py-2 text-xs leading-5 text-rose-700">

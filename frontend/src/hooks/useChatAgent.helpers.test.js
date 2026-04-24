@@ -193,3 +193,17 @@ test('buildTurnMultimodalFeatures keeps text-triggered turns text-only by defaul
     },
   )
 })
+
+test('buildTurnMultimodalFeatures requests response audio for text turns in video mode', () => {
+  assert.deepEqual(
+    buildTurnMultimodalFeatures({
+      inputMode: 'text',
+      responseAudio: false,
+      callMode: 'video',
+    }),
+    {
+      response_audio: true,
+      call_mode: 'video',
+    },
+  )
+})

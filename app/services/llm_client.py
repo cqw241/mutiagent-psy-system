@@ -12,6 +12,7 @@ import logging
 import os
 from abc import ABC, abstractmethod
 from typing import Any, AsyncIterator
+from urllib.parse import urlparse
 
 from app.core.config import Settings
 
@@ -24,6 +25,22 @@ except ImportError:  # pragma: no cover - 测试环境未安装时走安全降�
 
 logger = logging.getLogger(__name__)
 _BUFFERED_STREAM_EMIT_INTERVAL_SECONDS = 0.008
+_DASHSCOPE_HOST = "dashscope.aliyuncs.com"
+
+
+def _append_no_proxy_host(host: str) -> None:
+    for env_name in ("NO_PROXY", "no_proxy"):
+        current = os.environ.get(env_name, "")
+        entries = [entry.strip() for entry in current.split(",") if entry.strip()]
+        if host not in entries:
+            entries.append(host)
+            os.environ[env_name] = ",".join(entries)
+
+
+def _bypass_proxy_for_dashscope(base_url: str) -> None:
+    host = urlparse(base_url).hostname
+    if host == _DASHSCOPE_HOST:
+        _append_no_proxy_host(_DASHSCOPE_HOST)
 
 
 class BaseLLMClient(ABC):
@@ -51,6 +68,7 @@ class LiteLLMClient(BaseLLMClient):
 
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
+        _bypass_proxy_for_dashscope(self.settings.llm_base_url)
         if litellm is not None:
             litellm.set_verbose = self.settings.llm_verbose
 

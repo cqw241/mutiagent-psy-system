@@ -256,6 +256,44 @@ def test_qwen_tts_service_retries_transient_failure_before_emitting_audio():
     assert [chunk.audio_bytes for chunk in chunks] == [b"recovered-pcm"]
 
 
+def test_qwen_tts_service_falls_back_to_edge_tts_after_forbidden_response(monkeypatch):
+    seen_edge_calls: list[str] = []
+
+    class FallbackCommunicate:
+        def __init__(self, text, voice, rate, volume):
+            seen_edge_calls.append(text)
+
+        async def stream(self):
+            yield {"type": "audio", "data": b"edge-fallback-mp3"}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.method == "POST"
+        return httpx.Response(403, request=request)
+
+    monkeypatch.setattr(
+        tts_service,
+        "edge_tts",
+        SimpleNamespace(Communicate=FallbackCommunicate),
+    )
+
+    service = tts_service.QwenTTSService(
+        Settings(
+            tts_provider="dashscope",
+            tts_api_key="llm-key-without-tts-permission",
+            tts_model="qwen-tts-latest",
+            tts_voice="Serena",
+        ),
+        transport=httpx.MockTransport(handler),
+    )
+
+    chunks = asyncio.run(_collect_chunks(service, "语音回复需要兜底播放。"))
+
+    assert seen_edge_calls == ["语音回复需要兜底播放。"]
+    assert len(chunks) == 1
+    assert chunks[0].audio_bytes == b"edge-fallback-mp3"
+    assert chunks[0].mime_type == "audio/mpeg"
+
+
 def test_get_tts_service_returns_qwen_provider_by_default():
     service = tts_service.get_tts_service(
         Settings(

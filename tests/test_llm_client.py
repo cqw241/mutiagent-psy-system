@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 from types import SimpleNamespace
 
 import app.services.llm_client as llm_client_module
@@ -30,6 +31,21 @@ def test_litellm_client_enables_verbose_logging(monkeypatch):
     HelperLiteLLMClient(Settings(llm_api_key="demo-key", llm_verbose=True))
 
     assert fake_litellm.set_verbose is True
+
+
+def test_litellm_client_bypasses_proxy_for_dashscope(monkeypatch):
+    monkeypatch.setenv("NO_PROXY", "localhost,127.0.0.1")
+    monkeypatch.setenv("no_proxy", "localhost,127.0.0.1")
+
+    HelperLiteLLMClient(
+        Settings(
+            llm_api_key="demo-key",
+            llm_base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+        )
+    )
+
+    assert "dashscope.aliyuncs.com" in os.environ["NO_PROXY"].split(",")
+    assert "dashscope.aliyuncs.com" in os.environ["no_proxy"].split(",")
 
 
 def test_stream_text_logs_underlying_litellm_error(monkeypatch, caplog):

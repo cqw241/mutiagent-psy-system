@@ -171,7 +171,7 @@ export function buildTurnMultimodalFeatures({
   callMode = 'standard',
 } = {}) {
   return {
-    response_audio: inputMode === 'voice' ? true : Boolean(responseAudio),
+    response_audio: callMode === 'video' || inputMode === 'voice' || Boolean(responseAudio),
     call_mode: callMode,
   }
 }

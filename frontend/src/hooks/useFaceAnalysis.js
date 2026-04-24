@@ -146,6 +146,9 @@ export function useFaceAnalysis({ sendFn, enabled = false } = {}) {
       mediaStreamRef.current.getTracks().forEach((t) => t.stop())
       mediaStreamRef.current = null
     }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null
+    }
     if (landmarkerRef.current) {
       landmarkerRef.current.close()
       landmarkerRef.current = null

@@ -290,6 +290,8 @@ class QwenTTSService(BaseTTSService):
 
         if not self.api_key:
             logger.warning("DashScope TTS API key is missing; skipping qwen TTS synthesis.")
+            async for chunk in EdgeTTSService(self.settings).stream_audio(normalized_text):
+                yield chunk
             return
 
         if os.getenv("PYTEST_CURRENT_TEST") and self.transport is None:
@@ -315,6 +317,7 @@ class QwenTTSService(BaseTTSService):
                     timeout=self.timeout_seconds,
                     transport=self.transport,
                     follow_redirects=True,
+                    trust_env=False,
                 ) as client:
                     request_headers = {
                         **headers,
@@ -403,6 +406,9 @@ class QwenTTSService(BaseTTSService):
                     continue
 
                 logger.warning("qwen-tts synthesis failed: %s", exc)
+                if not emitted_audio:
+                    async for chunk in EdgeTTSService(self.settings).stream_audio(normalized_text):
+                        yield chunk
                 return
 
 
