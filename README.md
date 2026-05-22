@@ -176,10 +176,12 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
 ### 前端 (Vite + React)
+本项目优先使用 `pnpm` 管理前端依赖与脚本；`frontend/package.json` 已声明对应的 package manager。
+
 ```bash
 cd frontend
-npm install
-npm run dev -- --host 0.0.0.0
+pnpm install
+pnpm run dev -- --host 0.0.0.0
 ```
 访问 `http://localhost:5173` 进行交互。
 
