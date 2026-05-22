@@ -11,6 +11,11 @@ from pydantic import BaseModel, Field
 
 RiskLevel = Literal["low", "medium", "high"]
 MessageRole = Literal["user", "assistant", "system"]
+AlertDeliveryStatus = Literal["created", "delivered", "delivery_failed"]
+AlertAckStatus = Literal["unacknowledged", "acknowledged"]
+AlertHandlerStatus = Literal[
+    "created", "acknowledged", "in_progress", "escalated", "closed"
+]
 
 
 class ChatMessage(BaseModel):
@@ -69,3 +74,19 @@ class CounselorAlertPayload(BaseModel):
     summary: str
     trace_id: str
     extracted_signals: dict[str, Any] = Field(default_factory=dict)
+
+
+class AlertEvent(BaseModel):
+    """高风险告警事件的最小审计模型。"""
+
+    alert_event_id: str
+    trigger_time: str
+    updated_at: str
+    masked_session_id: str
+    risk_level: RiskLevel
+    latest_risk_evidence: dict[str, Any] = Field(default_factory=dict)
+    delivery_status: AlertDeliveryStatus = "created"
+    ack_status: AlertAckStatus = "unacknowledged"
+    handler_status: AlertHandlerStatus = "created"
+    trace_id: str
+    summary: str

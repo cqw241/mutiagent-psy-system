@@ -55,12 +55,18 @@ class AsyncWebhookAlertService(BaseAlertService):
 
     @staticmethod
     def mask_session_id(session_id: str) -> str:
+        if session_id.startswith("session-") and len(session_id) == len("session-") + 10:
+            return session_id
         digest = hashlib.sha256(session_id.encode("utf-8")).hexdigest()
         return f"session-{digest[:10]}"
 
     def sanitize_payload(self, payload: dict[str, Any]) -> dict[str, Any]:
+        masked_session_id = payload.get("masked_session_id") or self.mask_session_id(
+            payload.get("session_id", "")
+        )
         return {
-            "session_id": self.mask_session_id(payload.get("session_id", "")),
+            "alert_event_id": payload.get("alert_event_id", ""),
+            "session_id": masked_session_id,
             "risk_level": payload.get("risk_level", "high"),
             "summary": payload.get("summary", ""),
             "trace_id": payload.get("trace_id", ""),
@@ -69,6 +75,12 @@ class AsyncWebhookAlertService(BaseAlertService):
 
     def send_high_risk_alert(self, payload: dict[str, Any]) -> dict[str, Any]:
         safe_payload = self.sanitize_payload(payload)
+        if self.webhook_url.startswith("mock://"):
+            return {
+                "sent": True,
+                "channel": "mock_webhook",
+                "payload_preview": safe_payload,
+            }
         return {
             "sent": True,
             "channel": "webhook_scheduled",
@@ -77,6 +89,12 @@ class AsyncWebhookAlertService(BaseAlertService):
 
     async def send_high_risk_alert_async(self, payload: dict[str, Any]) -> dict[str, Any]:
         safe_payload = self.sanitize_payload(payload)
+        if self.webhook_url.startswith("mock://"):
+            return {
+                "sent": True,
+                "channel": "mock_webhook",
+                "payload_preview": safe_payload,
+            }
         try:
             async with httpx.AsyncClient(timeout=5, transport=self.transport) as client:
                 response = await client.post(self.webhook_url, json=safe_payload)

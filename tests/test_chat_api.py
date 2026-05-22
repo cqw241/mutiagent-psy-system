@@ -1,6 +1,7 @@
 from fastapi.testclient import TestClient
 
 from app.api.routes.chat import compiled_graph
+from app.core.config import get_settings
 from app.main import app
 
 
@@ -25,7 +26,10 @@ def test_chat_endpoint_returns_structured_response():
     assert "acoustic_support_level" in body["trace"]
 
 
-def test_chat_endpoint_returns_referral_for_high_risk_input():
+def test_chat_endpoint_returns_referral_for_high_risk_input(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("COUNSELOR_ALERT_WEBHOOK", "mock://counselor-alert")
+    get_settings.cache_clear()
     client = TestClient(app)
     response = client.post(
         "/chat",
@@ -41,6 +45,10 @@ def test_chat_endpoint_returns_referral_for_high_risk_input():
     assert body["risk_level"] == "high"
     assert body["referral_required"] is True
     assert body["alert_status"]["sent"] is True
+    assert body["alert_status"]["alert_event_id"].startswith("alert_")
+    assert body["alert_status"]["delivery_status"] == "delivered"
+    assert body["alert_status"]["handler_status"] == "created"
+    get_settings.cache_clear()
 
 
 def test_chat_endpoint_uses_session_memory():
