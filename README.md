@@ -2,7 +2,9 @@
 
 这是一个面向高校心理风险早期识别与规范转介的多智能体系统原型。当前版本已经全面升级为**多智能体（Multi-Agent）并行架构**，具备真实的 Fan-out/Fan-in 图拓扑，实现了文本、语音、端侧面部特征的并行分析与条件路由流转，同时提供标准聊天与视频通话两种交互模式。系统目标是辅助风险识别与流程转介，绝不替代专业心理咨询或医疗诊断。
 
-当前建议把它视为“**可联调、可验证、可继续硬化的试点前版本**”。若要进入校内试点，建议先参考 [Project Hardening And Pilot Readiness Implementation Plan](docs/plans/2026-03-23-project-hardening-roadmap.md) 并优先完成持久化、审计和 CI 基建。
+当前建议把它视为“**可联调、可验证、可继续硬化的试点前版本**”。若要进入校内试点，建议先参考 [Project Diagnosis And Development Plan](docs/plans/2026-05-22-project-diagnosis-and-development-plan.md) 并优先完成持久化、审计、风险评测、学生端 + 单一管理员闭环和 CI 基建。
+
+> 说明：`docs/plans` 中早期分阶段计划文档已作为冗余历史文件清理，当前后续研发决策以 `docs/plans/2026-05-22-project-diagnosis-and-development-plan.md` 为准。
 
 ## 当前已完成核心特性
 
@@ -64,7 +66,7 @@ flowchart LR
 - 支持 REST (`/chat`) 与两条 WebSocket 链路：文本流式接口 (`/ws/chat/{session_id}`) 和语音流式接口 (`/ws/voice-chat/{session_id}`)。
 - 前端提供标准聊天模式与视频通话模式：视频通话会自动拉起语音流、按需启用本地摄像头面部分析；语音输入回合会自动请求语音回复，视频通话中的文本和语音回合都会请求语音回复。
 - 视频通话面板会保持本地 `<video>` 节点常驻，打开镜头时可稳定绑定浏览器摄像头流并供 MediaPipe 端侧面部分析复用；摄像头关闭时清空 `srcObject`，避免残留旧流。
-- 后端默认接入阿里云百炼 `qwen3-tts-instruct-flash`，通过 SSE 流式返回句级音频分片；前端基于 `tts_audio` / `tts_end` 事件顺序播放，并兼容将流式 PCM 分片即时封装为浏览器可播的 WAV。
+- 后端默认接入阿里云百炼 `qwen-tts-latest`，通过 SSE 流式返回句级音频分片；前端基于 `tts_audio` / `tts_end` 事件顺序播放，并兼容将流式 PCM 分片即时封装为浏览器可播的 WAV。
 - DashScope LLM/TTS 调用会绕过本机代理环境变量，避免 `HTTPS_PROXY` 等本地代理导致 `dashscope.aliyuncs.com` TLS 连接被提前断开；TTS 在 DashScope 未产出音频时保留 `edge_tts` 降级路径。
 - 语音 WebSocket 会先发送 `transcript` 事件，再进入 `stage` / `token` / `final` / `end` 回复链路；文本 WebSocket 则直接进入流式回复链路。
 - 高风险会话不再通过冰冷模板提示，改为 `referral_agent` 输出极具同理心的温暖过渡语，并组装热线求助卡片。
@@ -98,12 +100,12 @@ tests/                     # pytest 测试用例 (包含 Graph、Nodes、Routers
 
 ## 环境配置
 
-强烈推荐在 Conda 虚拟环境 `llm_env` 中运行：
+强烈推荐在 Conda 虚拟环境 `llm_env` 或其他明确隔离的 Python 环境中运行，避免把项目依赖安装到系统 Python：
 
 ```bash
 conda create -n llm_env python=3.11
 conda activate llm_env
-pip install -r requirements.txt
+python -m pip install -r requirements.txt
 ```
 
 请复制一份 `.env.example` 为 `.env` 并按需填写，关键项：
@@ -115,7 +117,7 @@ pip install -r requirements.txt
 - `ENABLE_PEER_SUPPORT_RAG`、`RAGFLOW_PEER_SUPPORT_DATASET_ID`（控制同辈倾听话术检索开关与知识库）
 - `CHECKPOINT_BACKEND` (`memory` / `file`，更高阶的 `postgres` / `redis` 预留给外部 saver 扩展)
 - `CHECKPOINT_DIR` (当 `CHECKPOINT_BACKEND=file` 时生效)
-- `TTS_ENABLED`、`TTS_PROVIDER`、`TTS_API_KEY`、`TTS_MODEL`、`TTS_BASE_URL`、`TTS_TIMEOUT_SECONDS`（当前推荐 `dashscope + qwen3-tts-instruct-flash` 流式 TTS）
+- `TTS_ENABLED`、`TTS_PROVIDER`、`TTS_API_KEY`、`TTS_MODEL`、`TTS_BASE_URL`、`TTS_TIMEOUT_SECONDS`（当前默认 `dashscope + qwen-tts-latest` 流式 TTS）
 - `TTS_QWEN_VOICE`、`TTS_QWEN_LANGUAGE_TYPE`（控制百炼 Qwen TTS 的系统音色与语言类型；当前联调使用 `Serena`，不传 instruction）
 - `TTS_VOICE`、`TTS_RATE`、`TTS_VOLUME`、`TTS_OUTPUT_FORMAT`（仅在切回 `edge_tts` provider 时使用）
 - `ENABLE_EMOTION2VEC` (默认 `true`；设为 `false` 可关闭本地 emotion2vec 辅助语音信号)
@@ -200,7 +202,10 @@ node --test frontend/src/lib/typewriterStream.test.js frontend/src/hooks/useTTSP
 
 ## 当前边界与后续计划
 
-1. **持久化与持久会话**：当前仓库已内置 `file` checkpointer 作为单机持久化方案；下一步应接入 PostgreSQL/Redis 等真正的多实例持久化后端。
-2. **本地模型挂载**：`BaseLLMClient` 抽象完全不变前提下，打通 A40 GPU 上的 Qwen2.5-72B 本地推理接口验证。
-3. **真实多模态视频/音频**：`face_analyzer` 已接入端侧 MediaPipe FACS/AU 聚合结果并参与风险辅助校准；`voice_analyzer` 已接入可选 `emotion2vec_plus_large` utterance 级深度 SER 辅助信号，下一步可再扩展到更长时序、多脸场景和 segment 级建模。
-4. **多重安全护栏**：声学特征与 emotion2vec 结果当前都仅做客观特征下发与“低危至中危”之间的适度调校，高危风险和警报坚持以文本模型理解与安全规则兜底。
+1. **持久化、审计与人工闭环**：当前仓库已内置 `file` checkpointer 作为单机持久化方案；下一步优先补齐 PostgreSQL checkpoint、告警事件落库、完整对话审计、管理员接单/升级/结案状态机。
+2. **首版产品角色**：近期产品形态先收敛为“学生端 + 单一管理员”，不立即扩展多角色 CRM；管理员负责查看高风险事件、确认接单、升级、填写回执和结案。
+3. **高风险 SOP 默认设计**：在校内真实 SOP 尚未确定前，系统按 `created -> delivered -> acknowledged -> in_progress -> escalated -> closed` 设计事件状态，并记录事件编号、触发时间、风险证据、送达状态、管理员操作和回执。
+4. **数据保存策略**：允许保存完整对话文本和 ASR 转写用于审计与复盘；默认不保存原始视频，原始音频默认不长期保存，仅保存声学特征、转写和必要 trace。建议完整对话保留 180 天，高风险事件摘要和处置审计保留 3 年，具体期限可按校内制度调整。
+5. **风险评测闭环**：下一阶段由工程侧先建立 golden case baseline 与自动评测 harness，再引入心理中心/伦理评审对高风险、误报、漏报样本做抽检确认。
+6. **本地大模型与更长时序多模态**：本地 A40 大模型推理、本地模型路由、更长时序音视频建模放入 3-6 个月能力扩展阶段；短期不作为试点前硬化阻塞项。
+7. **多重安全护栏**：声学特征与 emotion2vec 结果当前都仅做客观特征下发与“低危至中危”之间的适度调校，高危风险和警报坚持以文本模型理解与安全规则兜底。
