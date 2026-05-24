@@ -8,6 +8,8 @@ import {
   buildTurnMultimodalFeatures,
   completeAssistantTyping,
   finalizeAssistantMessages,
+  mergeFinalTraceWithRiskEvent,
+  mergeRiskEventIntoTrace,
 } from './useChatAgent.helpers.js'
 
 test('finalizeAssistantMessages merges the final reply into the active streaming bubble without restarting typing', () => {
@@ -206,4 +208,97 @@ test('buildTurnMultimodalFeatures requests response audio for text turns in vide
       call_mode: 'video',
     },
   )
+})
+
+test('mergeRiskEventIntoTrace stores risk event metadata without changing message state', () => {
+  const currentTrace = {
+    risk_calibration: {
+      risk_level: 'high',
+    },
+  }
+
+  const next = mergeRiskEventIntoTrace(currentTrace, {
+    type: 'risk_event',
+    alert_event_id: 'alert_123',
+    risk_level: 'high',
+    handler_status: 'created',
+    delivery_status: 'delivered',
+    trace_id: 'trace-1',
+    masked_session_id: 'session-abc',
+    summary: '高风险摘要',
+  })
+
+  assert.deepEqual(next, {
+    risk_calibration: {
+      risk_level: 'high',
+    },
+    risk_event: {
+      alert_event_id: 'alert_123',
+      risk_level: 'high',
+      handler_status: 'created',
+      delivery_status: 'delivered',
+      trace_id: 'trace-1',
+      masked_session_id: 'session-abc',
+      summary: '高风险摘要',
+    },
+  })
+})
+
+test('mergeRiskEventIntoTrace ignores unrelated websocket events', () => {
+  assert.equal(mergeRiskEventIntoTrace(null, { type: 'stage' }), null)
+})
+
+test('mergeFinalTraceWithRiskEvent preserves risk event metadata after final trace arrives', () => {
+  const currentTrace = {
+    risk_event: {
+      alert_event_id: 'alert_123',
+      risk_level: 'high',
+    },
+  }
+
+  const next = mergeFinalTraceWithRiskEvent(
+    currentTrace,
+    {
+      risk_calibration: {
+        risk_level: 'high',
+      },
+    },
+    'trace-1',
+  )
+
+  assert.deepEqual(next, {
+    risk_calibration: {
+      risk_level: 'high',
+    },
+    risk_event: {
+      alert_event_id: 'alert_123',
+      risk_level: 'high',
+    },
+  })
+})
+
+test('mergeFinalTraceWithRiskEvent drops stale risk event metadata from another turn', () => {
+  const currentTrace = {
+    risk_event: {
+      alert_event_id: 'alert_123',
+      risk_level: 'high',
+      trace_id: 'trace-old',
+    },
+  }
+
+  const next = mergeFinalTraceWithRiskEvent(
+    currentTrace,
+    {
+      risk_calibration: {
+        risk_level: 'low',
+      },
+    },
+    'trace-new',
+  )
+
+  assert.deepEqual(next, {
+    risk_calibration: {
+      risk_level: 'low',
+    },
+  })
 })

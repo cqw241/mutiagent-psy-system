@@ -113,6 +113,7 @@ async def referral_agent_node(
         "delivery_status": event.delivery_status,
         "handler_status": event.handler_status,
         "masked_session_id": event.masked_session_id,
+        "summary": event.summary,
     }
 
     # 温和过渡话术作为 referral_preamble，供 response_generator 组装最终回复

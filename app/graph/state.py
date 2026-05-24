@@ -36,7 +36,7 @@ class PsychologyGraphState(TypedDict, total=False):
     - 聚合信号：extracted_signals（由 signal_aggregator fan-in 生成）
     - RAG：reference_context
     - 风险评估：current_risk_score, risk_level, referral_required
-    - 转介与回复：hotline_card, alert_status, reply
+    - 转介与回复：hotline_card, alert_event_id, alert_status, reply
     - 可解释性：agent_judgments, trace
     """
 
@@ -74,6 +74,7 @@ class PsychologyGraphState(TypedDict, total=False):
 
     # ── 转介与回复 ──
     hotline_card: dict[str, Any] | None
+    alert_event_id: str | None
     alert_status: dict[str, Any]
     reply: str
 
@@ -81,4 +82,3 @@ class PsychologyGraphState(TypedDict, total=False):
     # 使用 merge_dicts reducer，允许 fan-out 中多个并行节点各写自己的 key
     agent_judgments: Annotated[dict[str, Any], merge_dicts]
     trace: dict[str, Any]
-

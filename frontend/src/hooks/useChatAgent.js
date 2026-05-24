@@ -7,6 +7,8 @@ import {
     buildTurnMultimodalFeatures,
     completeAssistantTyping,
     finalizeAssistantMessages,
+    mergeFinalTraceWithRiskEvent,
+    mergeRiskEventIntoTrace,
 } from './useChatAgent.helpers'
 
 function makeSessionId() {
@@ -63,7 +65,9 @@ export function useChatAgent({
             })
         })
 
-        setLatestTrace(finalPayload.trace ?? null)
+        setLatestTrace((current) => (
+            mergeFinalTraceWithRiskEvent(current, finalPayload.trace, finalPayload.trace_id)
+        ))
         tokenBufferRef.current = ''
         currentAssistantStreamIdRef.current = null
     }
@@ -87,6 +91,11 @@ export function useChatAgent({
 
         if (payload.type === 'stage') {
             setStageLabel(STAGE_COPY[payload.name] ?? payload.message ?? '系统正在温和处理这条消息。')
+            return
+        }
+
+        if (payload.type === 'risk_event') {
+            setLatestTrace((current) => mergeRiskEventIntoTrace(current, payload))
             return
         }
 

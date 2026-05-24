@@ -1,65 +1,44 @@
-# AGENTS.md
+# Repository Guidelines
 
-Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-specific instructions as needed.
+## Project Structure & Module Organization
 
-**Tradeoff:** These guidelines bias toward caution over speed. For trivial tasks, use judgment.
+Backend code lives in `app/`. Key areas are `app/api` for FastAPI routes, `app/graph` for LangGraph workflow/state, `app/nodes` for agent nodes, `app/services` for external integrations and persistence, `app/rag` for retrieval helpers, and `app/models` for schemas. Backend tests live in `tests/`. The React frontend lives in `frontend/src`, with components in `frontend/src/components`, hooks in `frontend/src/hooks`, and static assets in `frontend/src/assets` and `frontend/public`. Project documentation is under `docs/`, including plans, diagrams, RAG templates, and whitepapers.
 
-## 1. Think Before Coding
+## Build, Test, and Development Commands
 
-**Don't assume. Don't hide confusion. Surface tradeoffs.**
+Use an isolated Python environment such as Conda `llm_env`.
 
-Before implementing:
-- State your assumptions explicitly. If uncertain, ask.
-- If multiple interpretations exist, present them - don't pick silently.
-- If a simpler approach exists, say so. Push back when warranted.
-- If something is unclear, stop. Name what's confusing. Ask.
-
-## 2. Simplicity First
-
-**Minimum code that solves the problem. Nothing speculative.**
-
-- No features beyond what was asked.
-- No abstractions for single-use code.
-- No "flexibility" or "configurability" that wasn't requested.
-- No error handling for impossible scenarios.
-- If you write 200 lines and it could be 50, rewrite it.
-
-Ask yourself: "Would a senior engineer say this is overcomplicated?" If yes, simplify.
-
-## 3. Surgical Changes
-
-**Touch only what you must. Clean up only your own mess.**
-
-When editing existing code:
-- Don't "improve" adjacent code, comments, or formatting.
-- Don't refactor things that aren't broken.
-- Match existing style, even if you'd do it differently.
-- If you notice unrelated dead code, mention it - don't delete it.
-
-When your changes create orphans:
-- Remove imports/variables/functions that YOUR changes made unused.
-- Don't remove pre-existing dead code unless asked.
-
-The test: Every changed line should trace directly to the user's request.
-
-## 4. Goal-Driven Execution
-
-**Define success criteria. Loop until verified.**
-
-Transform tasks into verifiable goals:
-- "Add validation" → "Write tests for invalid inputs, then make them pass"
-- "Fix the bug" → "Write a test that reproduces it, then make it pass"
-- "Refactor X" → "Ensure tests pass before and after"
-
-For multi-step tasks, state a brief plan:
-```
-1. [Step] → verify: [check]
-2. [Step] → verify: [check]
-3. [Step] → verify: [check]
+```bash
+python -m pip install -r requirements.txt
+uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+conda run -n llm_env python -m pytest -q --tb=short
 ```
 
-Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
+Use `pnpm` for frontend work:
 
----
+```bash
+cd frontend
+pnpm install
+pnpm run dev -- --host 0.0.0.0
+pnpm run build
+pnpm run lint
+node --test
+```
 
-**These guidelines are working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, and clarifying questions come before implementation rather than after mistakes.
+If RAGFlow or the local BGE-M3 embedding service is needed, follow `docs/rag/start_command.md` for the Docker and model-server commands instead of duplicating them here.
+
+## Coding Style & Naming Conventions
+
+Use 4-space indentation for Python and keep modules focused by domain. Prefer typed Pydantic models and explicit service boundaries over ad hoc dictionaries for cross-module contracts. React components use PascalCase filenames, hooks use `useX.js`, and helper tests sit beside helpers as `*.test.js`. Keep comments brief and only where they clarify non-obvious behavior.
+
+## Testing Guidelines
+
+Backend tests use `pytest`; name files `test_*.py` and keep fixtures deterministic. Frontend logic tests use Node's built-in `node:test`; name files `*.test.js`. Risk, alert, WebSocket, RAG, and agent-routing changes must include targeted regression coverage or document why existing coverage is sufficient.
+
+## Commit & Pull Request Guidelines
+
+Follow Conventional Commits, for example `feat(alerts): persist high risk alert events` or `docs(git): rewrite rules for github flow`. This repository follows GitHub Flow: branch from `main`, open a PR, pass checks, review, squash merge, then delete the branch. PRs should describe scope, validation commands, risks, and rollback notes. Do not mix unrelated refactors with feature or fix work.
+
+## Security & Configuration Tips
+
+Copy `.env.example` to `.env` locally and never commit secrets, real student data, raw private media, or local environment files. Treat high-risk alerting, data retention, privacy, RAG data, and audit behavior as safety-sensitive changes requiring explicit review.

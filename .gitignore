@@ -3,3 +3,4 @@
 __pycache__/
 .pytest_cache/
 .alert-events/
+docs/rag/start_command.md

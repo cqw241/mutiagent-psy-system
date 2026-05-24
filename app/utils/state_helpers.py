@@ -69,5 +69,6 @@ def build_initial_state(
         "agent_judgments": {},
         "reply": "",
         "hotline_card": None,
+        "alert_event_id": None,
         "alert_status": {},
     }

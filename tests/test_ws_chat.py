@@ -35,7 +35,61 @@ def test_ws_chat_emits_stage_token_final_and_end_events():
         assert "final" in event_types
         assert event_types[-1] == "end"
         assert final_payload is not None
-        assert "risk_level" not in final_payload
+        assert final_payload["risk_level"] in {"low", "medium", "high"}
+        assert final_payload["alert_status"] == {}
+        assert final_payload["alert_event_id"] is None
+
+
+def test_ws_chat_emits_risk_event_before_final_for_high_risk_input(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("COUNSELOR_ALERT_WEBHOOK", "mock://counselor-alert")
+    get_settings.cache_clear()
+
+    client = TestClient(app)
+    try:
+        with client.websocket_connect("/ws/chat/session-ws-high-risk") as websocket:
+            websocket.send_json(
+                {
+                    "message": "我不想活了",
+                    "multimodal_features": {"facial_emotion": "despair"},
+                    "user_profile": {"school": "demo-university"},
+                }
+            )
+
+            events = []
+            for _ in range(200):
+                data = websocket.receive_json()
+                events.append(data)
+                if data["type"] == "end":
+                    break
+
+            event_types = [event["type"] for event in events]
+            risk_event = next(event for event in events if event["type"] == "risk_event")
+            final_payload = next(event for event in events if event["type"] == "final")
+
+            assert event_types.index("risk_event") < event_types.index("final")
+            assert set(risk_event) == {
+                "type",
+                "alert_event_id",
+                "risk_level",
+                "handler_status",
+                "delivery_status",
+                "trace_id",
+                "masked_session_id",
+                "summary",
+            }
+            assert risk_event["alert_event_id"].startswith("alert_")
+            assert risk_event["risk_level"] == "high"
+            assert risk_event["handler_status"] == "created"
+            assert risk_event["delivery_status"] == "delivered"
+            assert risk_event["trace_id"] == final_payload["trace_id"]
+            assert risk_event["masked_session_id"].startswith("session-")
+            assert risk_event["summary"]
+            assert final_payload["risk_level"] == "high"
+            assert final_payload["alert_event_id"] == risk_event["alert_event_id"]
+            assert final_payload["alert_status"]["alert_event_id"] == risk_event["alert_event_id"]
+    finally:
+        get_settings.cache_clear()
 
 
 class _FakeVoiceTranscriber:
@@ -160,9 +214,71 @@ def test_voice_ws_emits_transcript_stage_token_final_and_end_events(monkeypatch)
         assert "final" in event_types
         assert event_types[-1] == "end"
         assert final_payload is not None
+        assert final_payload["risk_level"] in {"low", "medium", "high"}
+        assert final_payload["alert_status"] == {}
+        assert final_payload["alert_event_id"] is None
         assert "trace" in final_payload
         assert final_payload["trace"]["latest_voice_segment"]["segment_id"] == "segment-000001"
         assert "risk_calibration" in final_payload["trace"]
+
+
+def test_voice_ws_emits_risk_event_before_final_for_high_risk_segment(
+    tmp_path,
+    monkeypatch,
+):
+    class _HighRiskVoiceTranscriber(_FakeVoiceTranscriber):
+        def process_audio_chunk_with_segments(self, chunk):
+            self.chunks.append(chunk)
+            if chunk != b"voice-frame":
+                return []
+            return [
+                _FakeVoiceSegment(
+                    transcript="我不想活了",
+                    segment_id="segment-high-risk",
+                    start_ms=0,
+                    end_ms=420,
+                    duration_ms=420,
+                )
+            ]
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("COUNSELOR_ALERT_WEBHOOK", "mock://counselor-alert")
+    monkeypatch.setattr(
+        ws_chat,
+        "create_voice_transcriber",
+        lambda: _HighRiskVoiceTranscriber(),
+    )
+    get_settings.cache_clear()
+
+    client = TestClient(app)
+    try:
+        with client.websocket_connect("/ws/voice-chat/session-voice-high-risk") as websocket:
+            websocket.send_bytes(b"voice-frame")
+            websocket.send_json(
+                {
+                    "type": "input_audio_buffer.commit",
+                    "multimodal_features": {"voice_energy": "low"},
+                    "user_profile": {"school": "demo-university"},
+                }
+            )
+
+            events = []
+            for _ in range(200):
+                data = websocket.receive_json()
+                events.append(data)
+                if data["type"] == "end":
+                    break
+
+            event_types = [event["type"] for event in events]
+            risk_event = next(event for event in events if event["type"] == "risk_event")
+            final_payload = next(event for event in events if event["type"] == "final")
+
+            assert event_types.index("risk_event") < event_types.index("final")
+            assert risk_event["alert_event_id"] == final_payload["alert_event_id"]
+            assert risk_event["risk_level"] == "high"
+            assert final_payload["alert_status"]["handler_status"] == "created"
+    finally:
+        get_settings.cache_clear()
 
 
 def test_voice_ws_emits_tts_audio_events_when_response_audio_requested(monkeypatch):
