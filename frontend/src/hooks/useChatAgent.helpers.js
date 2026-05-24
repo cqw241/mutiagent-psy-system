@@ -195,10 +195,13 @@ export function mergeRiskEventIntoTrace(currentTrace, riskEvent) {
   }
 }
 
-export function mergeFinalTraceWithRiskEvent(currentTrace, finalTrace) {
+export function mergeFinalTraceWithRiskEvent(currentTrace, finalTrace, traceId) {
   const nextTrace = finalTrace ?? null
   const riskEvent = currentTrace?.risk_event
   if (!riskEvent) {
+    return nextTrace
+  }
+  if (riskEvent.trace_id && traceId && riskEvent.trace_id !== traceId) {
     return nextTrace
   }
 

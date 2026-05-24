@@ -65,7 +65,9 @@ export function useChatAgent({
             })
         })
 
-        setLatestTrace((current) => mergeFinalTraceWithRiskEvent(current, finalPayload.trace))
+        setLatestTrace((current) => (
+            mergeFinalTraceWithRiskEvent(current, finalPayload.trace, finalPayload.trace_id)
+        ))
         tokenBufferRef.current = ''
         currentAssistantStreamIdRef.current = null
     }

@@ -256,11 +256,15 @@ test('mergeFinalTraceWithRiskEvent preserves risk event metadata after final tra
     },
   }
 
-  const next = mergeFinalTraceWithRiskEvent(currentTrace, {
-    risk_calibration: {
-      risk_level: 'high',
+  const next = mergeFinalTraceWithRiskEvent(
+    currentTrace,
+    {
+      risk_calibration: {
+        risk_level: 'high',
+      },
     },
-  })
+    'trace-1',
+  )
 
   assert.deepEqual(next, {
     risk_calibration: {
@@ -269,6 +273,32 @@ test('mergeFinalTraceWithRiskEvent preserves risk event metadata after final tra
     risk_event: {
       alert_event_id: 'alert_123',
       risk_level: 'high',
+    },
+  })
+})
+
+test('mergeFinalTraceWithRiskEvent drops stale risk event metadata from another turn', () => {
+  const currentTrace = {
+    risk_event: {
+      alert_event_id: 'alert_123',
+      risk_level: 'high',
+      trace_id: 'trace-old',
+    },
+  }
+
+  const next = mergeFinalTraceWithRiskEvent(
+    currentTrace,
+    {
+      risk_calibration: {
+        risk_level: 'low',
+      },
+    },
+    'trace-new',
+  )
+
+  assert.deepEqual(next, {
+    risk_calibration: {
+      risk_level: 'low',
     },
   })
 })
