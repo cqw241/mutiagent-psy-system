@@ -22,7 +22,22 @@ from app.services.llm_client import BaseLLMClient, LiteLLMClient
 from app.utils.state_helpers import latest_user_message, merge_agent_judgment
 
 HIGH_RISK_KEYWORDS = ["不想活了", "自杀", "结束生命", "活不下去", "轻生"]
-MEDIUM_RISK_KEYWORDS = ["崩溃", "绝望", "失眠", "痛苦", "焦虑"]
+MEDIUM_RISK_KEYWORDS = [
+    "崩溃",
+    "绝望",
+    "失眠",
+    "睡不好",
+    "痛苦",
+    "焦虑",
+    "请了几次课",
+    "不想出门",
+    "不想见人",
+    "吃不下",
+    "学不进去",
+    "实验室",
+    "组会",
+    "失控",
+]
 HIGH_RISK_BLACKLIST = [
     "不想活了",
     "想死",
@@ -38,25 +53,41 @@ HIGH_RISK_BLACKLIST = [
     "遗书",
     "伤害自己",
 ]
+HIGH_RISK_CONTEXT_GUARD_PATTERNS = [
+    re.compile(r"不是我[，,]"),
+    re.compile(r"不是我现在要做什么"),
+    re.compile(r"不是想(?:自杀|死)"),
+    re.compile(r"没有想(?:伤害自己|自杀|死)"),
+    re.compile(r"纯吐槽"),
+    re.compile(r"歌词"),
+    re.compile(r"新闻"),
+]
 HIGH_RISK_VARIATION_PATTERNS = [
     re.compile(r"不想(?:再)?活(?:了|下去)?"),
     re.compile(r"(?:想|要)死"),
     re.compile(r"自杀"),
     re.compile(r"结束(?:自己的)?生命"),
     re.compile(r"割腕"),
-    re.compile(r"跳楼"),
-    re.compile(r"(?:吃安眠药|吞药|吞下?药片|药吃多了)"),
+    re.compile(r"跳楼|跳下去|从高处跳"),
+    re.compile(r"(?:安眠药|药和水).{0,8}(?:吞|吃|放在手边)"),
+    re.compile(r"(?:吃安眠药|吞药|吞下?药片|吞下去|药吃多了)"),
     re.compile(r"活着(?:没有|没)意思"),
     re.compile(r"寻短见|寻死"),
     re.compile(r"写?遗书"),
+    re.compile(r"告别.{0,8}消息|消息.{0,8}告别"),
     re.compile(r"(?:伤害|弄伤)自己"),
     re.compile(r"(?:想|要|准备).{0,4}解脱"),
     re.compile(r"解脱.{0,6}(?:自己|生命|活着)"),
+    re.compile(r"结束(?:掉)?就算了|这样就结束了"),
 ]
 
 
 def _compute_rule_risk(keywords: list[str], text: str) -> tuple[str, float]:
     joined = " ".join(keywords) + " " + text
+    if _has_high_risk_context_guard(joined):
+        if any(keyword in joined for keyword in MEDIUM_RISK_KEYWORDS):
+            return "medium", 0.60
+        return "low", 0.20
     if any(keyword in joined for keyword in HIGH_RISK_KEYWORDS):
         return "high", 0.95
     if any(keyword in joined for keyword in MEDIUM_RISK_KEYWORDS):
@@ -80,9 +111,15 @@ def _safe_float(value: Any, default: float) -> float:
 # _latest_user_message removed — now using utils.state_helpers.latest_user_message
 
 
+def _has_high_risk_context_guard(text: str) -> bool:
+    return any(pattern.search(text) for pattern in HIGH_RISK_CONTEXT_GUARD_PATTERNS)
+
+
 def _matches_high_risk_blacklist(text: str) -> bool:
     normalized = text.strip()
     if not normalized:
+        return False
+    if _has_high_risk_context_guard(normalized):
         return False
     if any(phrase in normalized for phrase in HIGH_RISK_BLACKLIST):
         return True

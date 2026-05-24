@@ -128,3 +128,6 @@ def test_run_risk_eval_node_mode_uses_offline_node_level_path(tmp_path):
     assert report["case_count"] == 34
     assert isinstance(report["false_positives"], list)
     assert isinstance(report["false_negatives"], list)
+    assert report["high_recall"] == 1.0
+    assert report["false_negatives"] == []
+    assert report["false_positives"] == []

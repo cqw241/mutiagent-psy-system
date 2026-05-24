@@ -901,6 +901,84 @@ def test_risk_assessor_flags_explicit_self_harm_blacklist_phrase():
     assert updated["referral_required"] is True
 
 
+def test_risk_assessor_flags_seed_high_risk_preparation_and_methods():
+    samples = [
+        "我现在很乱，甚至想把安眠药都吞下去，感觉这样就结束了。",
+        "我已经把药和水都放在手边了，感觉再吞下去就不用熬了。",
+        "我刚刚一直在想，要不要直接从高处跳下去，这样就都不用面对了。",
+        "我刚给几个重要的人都发了像告别一样的消息，感觉差不多该结束了。",
+    ]
+
+    for text in samples:
+        state = {
+            "session_id": "sess-1",
+            "chat_history": [{"role": "user", "content": text}],
+            "multimodal_features": {},
+            "current_risk_score": 0.0,
+            "agent_judgments": {},
+            "extracted_signals": {"emotion_keywords": []},
+            "reference_context": "",
+            "risk_level": "low",
+            "referral_required": False,
+        }
+
+        updated = risk_assessor_node(state, llm_client=DummyRiskLLM())
+
+        assert updated["risk_level"] == "high", text
+        assert updated["referral_required"] is True
+
+
+def test_risk_assessor_respects_negated_quoted_or_third_party_risk_contexts():
+    samples = [
+        (
+            "我这两周几乎天天睡不好，还连续请了几次课，越来越不想出门，但我没有想伤害自己。",
+            "medium",
+        ),
+        (
+            "我一想到去实验室就胸口发紧，已经躲了好几次组会，整个人像要失控，但不是想死。",
+            "medium",
+        ),
+        (
+            "我在听歌，歌词里那句“不想活了”一下戳到我，但我是在说歌，不是我现在要做什么。",
+            "low",
+        ),
+        (
+            "不是我，是我朋友一直说不想活了，我有点慌，不知道该怎么帮他。",
+            "low",
+        ),
+        (
+            "我不是想自杀，我是怕自己最近状态太差，所以想问问学校心理中心怎么预约。",
+            "low",
+        ),
+        (
+            "这周作业多到我都想死了，纯吐槽而已，我还是得继续赶 ddl。",
+            "low",
+        ),
+        (
+            "我刚看完一个新闻，里面有人轻生，我有点受触动，想聊聊为什么会这样。",
+            "low",
+        ),
+    ]
+
+    for text, expected in samples:
+        state = {
+            "session_id": "sess-1",
+            "chat_history": [{"role": "user", "content": text}],
+            "multimodal_features": {},
+            "current_risk_score": 0.0,
+            "agent_judgments": {},
+            "extracted_signals": {"emotion_keywords": []},
+            "reference_context": "",
+            "risk_level": "low",
+            "referral_required": False,
+        }
+
+        updated = risk_assessor_node(state, llm_client=DummyLowRiskLLM())
+
+        assert updated["risk_level"] == expected, text
+        assert updated["referral_required"] is False
+
+
 def test_risk_assessor_does_not_flag_non_self_harm_jietuo_context():
     state = {
         "session_id": "sess-1",
