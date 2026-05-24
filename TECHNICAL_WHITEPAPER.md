@@ -1,15 +1,15 @@
 # 技术白皮书：面向高校学生心理风险早期识别与转介辅助的多智能体协同系统
 
-版本：V1.6  
-日期：2026-05-24  
-代码基线：`main` 分支 `75cdb9d`  
+版本：V1.7
+日期：2026-05-25
+代码基线：`feature/ci-smoke-checks` 分支 `41cb2cf`，待 PR #4 合入 `main`
 文档定位：校内试点前技术说明、跨团队评审材料、研发交接入口
 
 ## 摘要
 
 本项目是一套面向高校学生心理风险早期识别、支持性回应与规范转介辅助的多智能体系统。它以 FastAPI 和 LangGraph 为后端核心，以 React 为学生端交互界面，通过文本、语音和端侧面部辅助观察构建多模态风险视图，并在高风险场景下触发温和转介、热线卡片、脱敏告警与本地告警事件记录。
 
-截至 2026-05-24，项目已经完成从“可演示多模态心理支持原型”到“试点前闭环工程基线”的关键推进：高风险事件已具备 file-backed 持久化模型，WebSocket 已暴露稳定的 `risk_event` 和 `final` 风险字段，风险评测 harness 已纳入 34 条 seed case 并修补明确高危漏报与非本人/否定/引用语境误报。当前系统仍不是生产级校内工单系统；正式试点前还需要真实 SOP、管理员后台、生产级审计存储、CI 和部署硬化。
+截至 2026-05-25，项目已经完成从“可演示多模态心理支持原型”到“试点前闭环工程基线”的关键推进：高风险事件已具备 file-backed 持久化模型，WebSocket 已暴露稳定的 `risk_event` 和 `final` 风险字段，风险评测 harness 已纳入 34 条 seed case 并修补明确高危漏报与非本人/否定/引用语境误报，GitHub Actions 与本地 smoke 命令已补齐。当前系统仍不是生产级校内工单系统；正式试点前还需要真实 SOP、管理员后台、生产级审计存储和部署硬化。
 
 本系统明确不替代心理咨询师，不输出医学诊断结论，不提供治疗方案。它的价值在于把学生主动表达中的风险线索转化为可解释、可追踪、可复盘的辅助信息，并在高风险时尽早把人工支持接入流程。
 
@@ -343,11 +343,13 @@ casebook 共 34 条，字段包括：
 ```bash
 conda run -n llm_env python -m pytest -q --tb=short
 conda run -n llm_env python scripts/run_risk_eval.py --mode node
+pnpm --dir frontend run test:node
 pnpm --dir frontend run build
 pnpm --dir frontend run lint
+PYTHON_BIN=/path/to/env/python bash scripts/ci_check.sh
 ```
 
-当前尚未加入 `.github/workflows`，CI 是下一阶段剩余任务。
+CI 入口位于 `.github/workflows/ci.yml`，包含后端 pytest、risk eval mock、前端 node tests、lint 和 build。GitHub runner 会安装 `libportaudio2`，同时 ASR 服务在 `sounddevice` 因缺少 PortAudio 抛出 `OSError` 时会按可选依赖不可用处理，避免 CI 收集阶段失败。
 
 ## 12. 部署与依赖
 
@@ -387,7 +389,6 @@ pnpm run dev -- --host 0.0.0.0
 - 管理员后台、接单、升级、结案和回执。
 - 真实校内 SOP、真实热线和真实值班系统。
 - 登录、权限、多角色。
-- GitHub Actions CI。
 - Docker / docker-compose 部署。
 - 专家审定风险样本集。
 - 本地大模型路由与压测。
@@ -405,12 +406,9 @@ pnpm run dev -- --host 0.0.0.0
 - WebSocket `risk_event` / `final` 风险契约。
 - 风险评测 harness v0。
 - 高危漏报和高危误报修补。
-
-剩余：
-
 - CI/smoke checks。
 - 前端统一 `test:node` 脚本。
-- 本地 `scripts/ci_check.sh` 或 GitHub Actions。
+- 本地 `scripts/ci_check.sh` 与 GitHub Actions。
 
 ### 中期：1-2 个月
 
@@ -433,4 +431,4 @@ pnpm run dev -- --host 0.0.0.0
 
 本项目已经具备试点前工程原型的关键骨架：多智能体图、实时协议、多模态辅助观察、高风险事件、风险评测和可解释 trace。最新进展的价值不在于“模型更会聊天”，而在于系统开始具备可追踪、可验证、可回归的安全闭环。
 
-下一阶段不应优先扩展更多模型能力，而应完成 CI、管理员后台、真实 SOP、生产级持久化和数据治理。只有这些组织与工程闭环补齐后，系统才适合进入更严肃的校内试点。
+下一阶段不应优先扩展更多模型能力，而应完成管理员后台、真实 SOP、生产级持久化、数据治理和部署硬化。只有这些组织与工程闭环补齐后，系统才适合进入更严肃的校内试点。

@@ -8,14 +8,15 @@
 
 ## 当前状态
 
-截至 2026-05-24，`main` 已合入以下关键阶段：
+截至 2026-05-25，短期 1-2 周工程闭环已完成到 PR #4，且 GitHub Actions checks 已通过；前 4 个阶段已合入 `main`，CI 收尾分支待合入：
 
 - `feature/short-term-doc-baseline`：校准 README、白皮书、环境变量和短期路线图。
 - `feature/alert-event-store-v0`：新增高风险告警事件模型与 file-backed JSONL store。
 - `feature/ws-risk-event-contract`：稳定 WebSocket `final` 与 `risk_event` 风险事件契约。
 - `feature/risk-eval-harness-v0`：新增 34 条 seed case 风险评测集、离线评测脚本，并修补高危漏报和误报规则。
+- `feature/ci-smoke-checks`：新增 GitHub Actions smoke、本地 `scripts/ci_check.sh`、前端 `test:node` 脚本，并修复 CI runner 缺少 PortAudio 时 ASR 可选依赖导入失败的问题。
 
-当前尚未完成生产级 PostgreSQL/Redis checkpoint、正式管理员后台、多角色权限、真实校内 SOP、CI workflow 和容器化部署。这些仍在后续计划中。
+当前尚未完成生产级 PostgreSQL/Redis checkpoint、正式管理员后台、多角色权限、真实校内 SOP 和容器化部署。这些仍在后续计划中。
 
 ## 核心能力
 
@@ -268,7 +269,19 @@ pnpm --dir frontend run build
 pnpm --dir frontend run lint
 ```
 
-前端逻辑测试当前使用 Node 内置 test runner，逐个运行 `frontend/src/**/*.test.js`。`frontend/package.json` 尚未加入统一 `test:node` 脚本，这是下一步 CI/smoke 任务的一部分。
+前端逻辑测试当前使用 Node 内置 test runner：
+
+```bash
+pnpm --dir frontend run test:node
+```
+
+本地同款 smoke 入口：
+
+```bash
+PYTHON_BIN=/path/to/env/python bash scripts/ci_check.sh
+```
+
+CI 入口位于 `.github/workflows/ci.yml`，覆盖后端 pytest、risk eval mock、前端 node tests、lint 和 build。GitHub runner 会安装 `libportaudio2`，避免 `sounddevice` 在缺少 PortAudio 时影响后端测试收集。
 
 ## 数据保存与安全边界
 
@@ -284,11 +297,11 @@ pnpm --dir frontend run lint
 
 ## 近期计划
 
-短期剩余重点：
+短期 1-2 周计划已完成，详见 [docs/plans/短期1-2周开发计划.md](docs/plans/短期1-2周开发计划.md)。后续重点：
 
-1. `feature/ci-smoke-checks`：新增 GitHub Actions 或本地 `scripts/ci_check.sh`，统一后端 pytest、前端 build/lint、前端 node tests、risk eval mock。
-2. 最小管理员后台：告警列表、事件详情、接单、升级、结案、回执。
-3. 真实校内 SOP 与资源接入：替换当前热线占位和 mock webhook。
-4. 数据治理与审计：生产级 checkpoint、审计存储、导出/删除路径。
+1. 最小管理员后台：告警列表、事件详情、接单、升级、结案、回执。
+2. 真实校内 SOP 与资源接入：替换当前热线占位和 mock webhook。
+3. 数据治理与审计：生产级 checkpoint、审计存储、导出/删除路径。
+4. 容器化和部署硬化：docker-compose、生产环境变量、健康检查和回滚流程。
 
 中长期方向包括本地大模型路由、多实例持久化、多模态时序建模、专家复核样本集和校园运营看板。
