@@ -12,6 +12,7 @@ from app.nodes.signal_aggregator import signal_aggregator_node
 from app.nodes.risk_assessor import risk_assessor_node
 from app.nodes.response_generator import response_generator_node
 from app.nodes.referral_agent import referral_agent_node
+from app.services.alert_event_store import FileAlertEventStore
 from app.services.tts_service import TTSChunk
 
 
@@ -97,15 +98,17 @@ class PromptRecordingLLM:
 
 
 class DummyAsyncAlertService:
-    def __init__(self):
+    def __init__(self, *, sync_sent: bool = True, async_sent: bool = True):
         self.payload = None
+        self.sync_sent = sync_sent
+        self.async_sent = async_sent
 
     def send_high_risk_alert(self, payload):
-        return {"sent": True}
+        return {"sent": self.sync_sent}
 
     async def send_high_risk_alert_async(self, payload):
         self.payload = payload
-        return {"sent": True}
+        return {"sent": self.async_sent}
 
 
 class DummyVoiceEmotionLLM:
@@ -997,7 +1000,7 @@ def test_risk_assessor_uses_acoustic_support_only_as_medium_score_calibration():
 # ── Referral Agent Tests ──
 
 
-def test_referral_agent_generates_hotline_card():
+def test_referral_agent_generates_hotline_card(tmp_path):
     state = {
         "session_id": "sess-high",
         "trace_id": "trace-1",
@@ -1006,8 +1009,11 @@ def test_referral_agent_generates_hotline_card():
         "risk_level": "high",
         "agent_judgments": {},
     }
+    store = FileAlertEventStore(tmp_path / "alert-events.jsonl")
     service = DummyAsyncAlertService()
-    updated = asyncio.run(referral_agent_node(state, alert_service=service))
+    updated = asyncio.run(
+        referral_agent_node(state, alert_service=service, alert_event_store=store)
+    )
     assert updated["referral_required"] is True
     assert updated["hotline_card"] is not None
     assert "热线" in updated["hotline_card"]["hotline"]
@@ -1015,7 +1021,7 @@ def test_referral_agent_generates_hotline_card():
     assert updated["agent_judgments"]["referral_agent"]["referral_triggered"] is True
 
 
-def test_referral_agent_reply_is_warm_and_empathetic():
+def test_referral_agent_reply_is_warm_and_empathetic(tmp_path):
     state = {
         "session_id": "sess-high",
         "trace_id": "trace-1",
@@ -1024,14 +1030,17 @@ def test_referral_agent_reply_is_warm_and_empathetic():
         "risk_level": "high",
         "agent_judgments": {},
     }
+    store = FileAlertEventStore(tmp_path / "alert-events.jsonl")
     service = DummyAsyncAlertService()
-    updated = asyncio.run(referral_agent_node(state, alert_service=service))
+    updated = asyncio.run(
+        referral_agent_node(state, alert_service=service, alert_event_store=store)
+    )
     # 检查温和话术关键标志
     assert "担心" in updated["reply"]
     assert "勇敢" in updated["reply"]
 
 
-def test_referral_agent_redacts_session_id_in_alert():
+def test_referral_agent_redacts_session_id_in_alert(tmp_path):
     service = DummyAsyncAlertService()
     state = {
         "session_id": "session-abcdef123456",
@@ -1041,9 +1050,84 @@ def test_referral_agent_redacts_session_id_in_alert():
         "risk_level": "high",
         "agent_judgments": {},
     }
-    asyncio.run(referral_agent_node(state, alert_service=service))
+    store = FileAlertEventStore(tmp_path / "alert-events.jsonl")
+    asyncio.run(
+        referral_agent_node(state, alert_service=service, alert_event_store=store)
+    )
     assert service.payload is not None
     assert service.payload["session_id"] != "session-abcdef123456"
+
+
+def test_referral_agent_persists_delivered_alert_event(tmp_path):
+    state = {
+        "session_id": "session-delivered",
+        "trace_id": "trace-1",
+        "chat_history": [{"role": "user", "content": "我不想活了"}],
+        "extracted_signals": {"emotion_keywords": ["不想活了"]},
+        "risk_level": "high",
+        "agent_judgments": {},
+    }
+    store = FileAlertEventStore(tmp_path / "alert-events.jsonl")
+    service = DummyAsyncAlertService()
+
+    updated = asyncio.run(
+        referral_agent_node(state, alert_service=service, alert_event_store=store)
+    )
+
+    event = store.get(updated["alert_event_id"])
+    assert event is not None
+    assert event.delivery_status == "delivered"
+    assert event.handler_status == "created"
+    assert event.masked_session_id != "session-delivered"
+    assert updated["alert_status"]["alert_event_id"] == event.alert_event_id
+    assert service.payload["session_id"] == event.masked_session_id
+
+
+def test_referral_agent_keeps_event_when_webhook_delivery_fails(tmp_path):
+    state = {
+        "session_id": "session-failed",
+        "trace_id": "trace-1",
+        "chat_history": [{"role": "user", "content": "我不想活了"}],
+        "extracted_signals": {"emotion_keywords": ["不想活了"]},
+        "risk_level": "high",
+        "agent_judgments": {},
+    }
+    store = FileAlertEventStore(tmp_path / "alert-events.jsonl")
+    service = DummyAsyncAlertService(sync_sent=False, async_sent=False)
+
+    updated = asyncio.run(
+        referral_agent_node(state, alert_service=service, alert_event_store=store)
+    )
+
+    event = store.get(updated["alert_event_id"])
+    assert event is not None
+    assert event.delivery_status == "delivery_failed"
+    assert event.handler_status == "created"
+    assert updated["alert_status"]["delivery_status"] == "delivery_failed"
+    assert updated["agent_judgments"]["referral_agent"]["alert_sent"] is False
+
+
+def test_referral_agent_marks_event_failed_when_async_delivery_fails(tmp_path):
+    state = {
+        "session_id": "session-async-failed",
+        "trace_id": "trace-1",
+        "chat_history": [{"role": "user", "content": "我不想活了"}],
+        "extracted_signals": {"emotion_keywords": ["不想活了"]},
+        "risk_level": "high",
+        "agent_judgments": {},
+    }
+    store = FileAlertEventStore(tmp_path / "alert-events.jsonl")
+    service = DummyAsyncAlertService(sync_sent=True, async_sent=False)
+
+    updated = asyncio.run(
+        referral_agent_node(state, alert_service=service, alert_event_store=store)
+    )
+
+    event = store.get(updated["alert_event_id"])
+    assert event is not None
+    assert event.delivery_status == "delivery_failed"
+    assert updated["alert_status"]["delivery_status"] == "delivery_failed"
+    assert updated["agent_judgments"]["referral_agent"]["alert_sent"] is False
 
 
 # ── Response Generator Tests ──

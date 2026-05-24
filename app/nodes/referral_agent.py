@@ -15,8 +15,6 @@
 
 from __future__ import annotations
 
-import asyncio
-import hashlib
 from typing import Any
 
 from app.core.config import get_settings
@@ -24,6 +22,7 @@ from app.services.alert_service import (
     AsyncWebhookAlertService,
     BaseAlertService,
 )
+from app.services.alert_event_store import FileAlertEventStore
 from app.utils.state_helpers import latest_user_message, merge_agent_judgment
 
 
@@ -63,20 +62,10 @@ def _build_high_risk_summary(state: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _redact_alert_payload(payload: dict[str, Any]) -> dict[str, Any]:
-    """对告警负载进行脱敏处理。"""
-
-    session_id = payload.get("session_id", "")
-    masked = f"session-{hashlib.sha256(session_id.encode('utf-8')).hexdigest()[:10]}"
-    return {
-        **payload,
-        "session_id": masked,
-    }
-
-
 async def referral_agent_node(
     state: dict[str, Any],
     alert_service: BaseAlertService | None = None,
+    alert_event_store: FileAlertEventStore | None = None,
 ) -> dict[str, Any]:
     """高风险转介处理。
 
@@ -87,25 +76,56 @@ async def referral_agent_node(
     alerts = alert_service or AsyncWebhookAlertService(
         webhook_url=settings.counselor_alert_webhook
     )
+    event_store = alert_event_store or FileAlertEventStore()
 
     # 构建热线卡片
     hotline_card = _build_hotline_card()
 
+    summary_payload = _build_high_risk_summary(state)
+    event = event_store.create(
+        session_id=state.get("session_id", ""),
+        trace_id=state.get("trace_id", ""),
+        risk_level="high",
+        latest_risk_evidence={
+            "keywords": summary_payload.get("keywords", []),
+            "extracted_signals": state.get("extracted_signals", {}),
+        },
+        summary=summary_payload["summary"],
+    )
+
     # 触发告警（同步 + 异步双保险）
-    payload = _redact_alert_payload(_build_high_risk_summary(state))
-    alert_status = alerts.send_high_risk_alert(payload)
-    asyncio.create_task(alerts.send_high_risk_alert_async(payload))
+    payload = {
+        **summary_payload,
+        "alert_event_id": event.alert_event_id,
+        "session_id": event.masked_session_id,
+        "masked_session_id": event.masked_session_id,
+    }
+    scheduled_status = alerts.send_high_risk_alert(payload)
+    try:
+        alert_status = await alerts.send_high_risk_alert_async(payload)
+    except Exception:
+        alert_status = {**scheduled_status, "sent": False}
+    delivery_status = "delivered" if alert_status.get("sent") else "delivery_failed"
+    event = event_store.update(event.alert_event_id, delivery_status=delivery_status)
+    alert_status = {
+        **alert_status,
+        "alert_event_id": event.alert_event_id,
+        "delivery_status": event.delivery_status,
+        "handler_status": event.handler_status,
+        "masked_session_id": event.masked_session_id,
+    }
 
     # 温和过渡话术作为 referral_preamble，供 response_generator 组装最终回复
     judgment = {
         "referral_triggered": True,
-        "alert_sent": bool(alert_status),
+        "alert_sent": bool(alert_status.get("sent")),
         "hotline_card_generated": True,
     }
 
     return {
         "referral_required": True,
         "hotline_card": hotline_card,
+        "alert_event_id": event.alert_event_id,
         "alert_status": alert_status,
         "reply": _WARM_TRANSITION_TEMPLATE,
         "agent_judgments": merge_agent_judgment(state, "referral_agent", judgment),
