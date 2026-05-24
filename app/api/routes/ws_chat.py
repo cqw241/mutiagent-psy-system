@@ -6,7 +6,8 @@
 - {"type":"token","chunk":"我"}
 - {"type":"tts_audio","segment_id":"tts-0001","payload":"<base64>"}
 - {"type":"tts_end","segment_id":"tts-0001","text":"先深呼吸。"}
-- {"type":"final","reply":"...", "referral_required": false, "hotline_card": null, "trace_id": "..."}
+- {"type":"risk_event","alert_event_id":"...","risk_level":"high",...}
+- {"type":"final","reply":"...", "risk_level":"low", "alert_status": {}, "alert_event_id": null, ...}
 - {"type":"end"}
 - {"type":"error","message":"..."}
 """
@@ -83,6 +84,40 @@ async def _send_json_if_open(websocket: WebSocket, payload: dict) -> bool:
         if _is_disconnect_runtime_error(exc):
             return False
         raise
+
+
+def _build_risk_event_payload(values: dict) -> dict | None:
+    if values.get("risk_level") != "high" or not values.get("alert_event_id"):
+        return None
+
+    alert_status = values.get("alert_status") or {}
+    return {
+        "type": "risk_event",
+        "alert_event_id": values.get("alert_event_id"),
+        "risk_level": values.get("risk_level"),
+        "handler_status": alert_status.get("handler_status", "created"),
+        "delivery_status": alert_status.get("delivery_status", "created"),
+        "trace_id": values.get("trace_id"),
+        "masked_session_id": alert_status.get("masked_session_id"),
+        "summary": alert_status.get(
+            "summary",
+            "检测到需要人工关注的高风险心理支持对话，请尽快复核。",
+        ),
+    }
+
+
+def _build_final_payload(values: dict, initial_state: dict) -> dict:
+    return {
+        "type": "final",
+        "reply": values.get("reply", ""),
+        "risk_level": values.get("risk_level", "low"),
+        "referral_required": values.get("referral_required", False),
+        "hotline_card": values.get("hotline_card"),
+        "alert_status": values.get("alert_status", {}),
+        "alert_event_id": values.get("alert_event_id"),
+        "trace_id": values.get("trace_id", initial_state["trace_id"]),
+        "trace": build_trace_payload(values),
+    }
 
 
 def _try_create_voice_transcriber() -> PCMChunkAudioTranscriber | None:
@@ -162,16 +197,16 @@ async def _stream_graph_reply(
     except Exception:
         logger.debug("get_state() fallback failed, using accumulated state.")
 
+    risk_event_payload = _build_risk_event_payload(values)
+    if risk_event_payload and not await _send_json_if_open(
+        websocket,
+        risk_event_payload,
+    ):
+        return
+
     if not await _send_json_if_open(
         websocket,
-        {
-            "type": "final",
-            "reply": values.get("reply", ""),
-            "referral_required": values.get("referral_required", False),
-            "hotline_card": values.get("hotline_card"),
-            "trace_id": values.get("trace_id", initial_state["trace_id"]),
-            "trace": build_trace_payload(values),
-        }
+        _build_final_payload(values, initial_state),
     ):
         return
     await _send_json_if_open(websocket, {"type": "end"})

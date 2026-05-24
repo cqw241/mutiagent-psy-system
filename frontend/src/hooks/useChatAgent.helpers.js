@@ -175,3 +175,35 @@ export function buildTurnMultimodalFeatures({
     call_mode: callMode,
   }
 }
+
+export function mergeRiskEventIntoTrace(currentTrace, riskEvent) {
+  if (!riskEvent || riskEvent.type !== 'risk_event') {
+    return currentTrace ?? null
+  }
+
+  return {
+    ...(currentTrace ?? {}),
+    risk_event: {
+      alert_event_id: riskEvent.alert_event_id ?? null,
+      risk_level: riskEvent.risk_level ?? null,
+      handler_status: riskEvent.handler_status ?? null,
+      delivery_status: riskEvent.delivery_status ?? null,
+      trace_id: riskEvent.trace_id ?? null,
+      masked_session_id: riskEvent.masked_session_id ?? null,
+      summary: riskEvent.summary ?? '',
+    },
+  }
+}
+
+export function mergeFinalTraceWithRiskEvent(currentTrace, finalTrace) {
+  const nextTrace = finalTrace ?? null
+  const riskEvent = currentTrace?.risk_event
+  if (!riskEvent) {
+    return nextTrace
+  }
+
+  return {
+    ...(nextTrace ?? {}),
+    risk_event: riskEvent,
+  }
+}
